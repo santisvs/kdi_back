@@ -1,2 +1,6 @@
-Flask
-python-dotenv
+Flask>=2.3.0
+python-dotenv>=1.0.0
+strands-agents
+strands-agents-tools
+strands-agents-builder
+boto3>=1.28.0
