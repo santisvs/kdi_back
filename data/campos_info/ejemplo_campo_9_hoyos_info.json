@@ -1,0 +1,88 @@
+{
+  "name": "Ejemplo Campo 9 Hoyos (INFO)",
+  "location": {
+    "lat": 40.54727,
+    "lon": -3.91623
+  },
+  "holes": [
+    {
+      "hole_number": 1,
+      "par": 4,
+      "length": 320,
+      "fairway_polygon": [
+        [40.5470, -3.9165],
+        [40.5470, -3.9159],
+        [40.5474, -3.9159],
+        [40.5474, -3.9165]
+      ],
+      "green_polygon": [
+        [40.5472, -3.9162],
+        [40.5472, -3.9160],
+        [40.5473, -3.9160],
+        [40.5473, -3.9162]
+      ],
+      "points": [
+        {
+          "type": "tee",
+          "lat": 40.5471,
+          "lon": -3.9166
+        },
+        {
+          "type": "flag",
+          "lat": 40.54725,
+          "lon": -3.9161
+        },
+        {
+          "type": "tee_white",
+          "lat": 40.54705,
+          "lon": -3.91665
+        },
+        {
+          "type": "tee_yellow",
+          "lat": 40.54705,
+          "lon": -3.91655
+        }
+      ],
+      "obstacles": [
+        {
+          "type": "bunker",
+          "name": "Bunker izquierda",
+          "polygon": [
+            [40.54705, -3.91645],
+            [40.54705, -3.91635],
+            [40.54712, -3.91635],
+            [40.54712, -3.91645]
+          ]
+        },
+        {
+          "type": "water",
+          "name": "Lago frontal",
+          "polygon": [
+            [40.54718, -3.9163],
+            [40.54718, -3.91615],
+            [40.54725, -3.91615],
+            [40.54725, -3.9163]
+          ]
+        }
+      ],
+      "optimal_shots": [
+        {
+          "description": "Golpe estándar desde tee a bandera",
+          "line": [
+            [40.5471, -3.9166],
+            [40.54725, -3.9161]
+          ]
+        },
+        {
+          "description": "Salida conservadora a la parte ancha de la calle",
+          "line": [
+            [40.5471, -3.9166],
+            [40.5472, -3.9163]
+          ]
+        }
+      ]
+    }
+  ]
+}
+
+

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-import config
 from strands import Agent
 from strands.models import BedrockModel
+from kdi_back.infrastructure.config import settings
 
 # Define a golf-focused system prompt
 GOLF_SYSTEM_PROMPT = """Eres un asistente experto en golf que ayuda a los jugadores a elegir el palo correcto para cada situación.

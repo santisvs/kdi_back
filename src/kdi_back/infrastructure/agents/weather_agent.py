@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import config
 from strands import Agent
 from strands_tools import http_request
 from strands.models import BedrockModel
@@ -56,3 +55,4 @@ def get_weather_response(query: str) -> str:
         La respuesta del agente de clima
     """
     return weather_agent(query)
+
