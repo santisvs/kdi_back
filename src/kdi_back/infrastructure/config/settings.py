@@ -20,3 +20,8 @@ DB_NAME = os.getenv('DB_NAME', 'db_kdi_test')
 DB_USER = os.getenv('DB_USER', 'postgres')
 DB_PASSWORD = os.getenv('DB_PASSWORD', '')
 
+# Variables de entorno de AWS Bedrock Knowledge Base
+AWS_KNOWLEDGE_BASE_ID = os.getenv('AWS_KNOWLEDGE_BASE_ID', None)
+# La Knowledge Base se encuentra en la región eu-south-2
+AWS_KNOWLEDGE_BASE_REGION = os.getenv('AWS_KNOWLEDGE_BASE_REGION', 'eu-south-2')
+

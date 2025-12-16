@@ -539,6 +539,7 @@ def next_shot():
     - longitude: Longitud GPS de la posición de la pelota (float)
     - hole_id: ID del hoyo (requerido)
     - user_id: ID del usuario/jugador (opcional, si se proporciona usa el perfil del jugador)
+    - ball_situation_description: Descripción opcional de la situación de la bola y lo que ve el jugador (string)
     
     Ejemplo POST (sin perfil de jugador):
     {
@@ -553,6 +554,15 @@ def next_shot():
         "longitude": -3.87095,
         "hole_id": 1,
         "user_id": 1
+    }
+    
+    Ejemplo POST (con descripción de situación de la bola):
+    {
+        "latitude": 40.44445,
+        "longitude": -3.87095,
+        "hole_id": 1,
+        "user_id": 1,
+        "ball_situation_description": "La bola está en una posición elevada, puedo ver el green claramente. Hay viento en contra moderado."
     }
     
     Respuesta:
@@ -612,6 +622,13 @@ def next_shot():
             except (ValueError, TypeError):
                 return jsonify({"error": "El campo 'user_id' debe ser un número entero válido"}), 400
         
+        # ball_situation_description es opcional
+        ball_situation_description = None
+        if 'ball_situation_description' in data:
+            ball_situation_description = str(data['ball_situation_description']).strip()
+            if not ball_situation_description:
+                ball_situation_description = None
+        
         # Usar el servicio de dominio para obtener toda la información
         golf_service = get_golf_service()
         
@@ -667,7 +684,8 @@ def next_shot():
             distance_yards=distance_yards,
             terrain_type=terrain_type,
             obstacles=obstacles_for_agent,
-            player_club_statistics=player_club_statistics
+            player_club_statistics=player_club_statistics,
+            ball_situation_description=ball_situation_description
         )
         
         # Preparar respuesta con análisis completo
@@ -681,7 +699,8 @@ def next_shot():
                 "obstacles_count": len(obstacles),
                 "obstacles": obstacles_for_agent,
                 "user_id": user_id if user_id else None,
-                "player_profile_used": user_id is not None and player_club_statistics is not None
+                "player_profile_used": user_id is not None and player_club_statistics is not None,
+                "ball_situation_description": ball_situation_description if ball_situation_description else None
             }
         }
         
@@ -708,5 +727,6 @@ def next_shot():
             "error": "Error al obtener recomendación del siguiente golpe",
             "details": str(e)
         }), 500
+
 
 

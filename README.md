@@ -55,6 +55,11 @@ AWS_ACCESS_KEY_ID=tu_access_key
 AWS_SECRET_ACCESS_KEY=tu_secret_key
 AWS_REGION=us-east-1
 
+# Configuración de AWS Bedrock Knowledge Base (opcional)
+# IMPORTANTE: La Knowledge Base se encuentra en la región eu-south-2
+AWS_KNOWLEDGE_BASE_ID=tu_knowledge_base_id
+AWS_KNOWLEDGE_BASE_REGION=eu-south-2  # Por defecto es eu-south-2, pero puede configurarse si es diferente
+
 # Configuración de PostgreSQL/PostGIS
 DB_HOST=localhost
 DB_PORT=5432
