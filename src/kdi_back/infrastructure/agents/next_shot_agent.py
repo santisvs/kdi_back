@@ -16,22 +16,36 @@ NEXT_SHOT_SYSTEM_PROMPT = """Eres un asistente experto en golf que analiza infor
 
 Tu función es:
 1. Analizar la información completa de la situación actual de la bola
-2. Considerar la distancia exacta al hoyo
-3. Evaluar el tipo de terreno donde está la bola
-4. Analizar los obstáculos entre la bola y la bandera
-5. Considerar la situación de la bola y lo que ve el jugador (si está disponible)
-6. Usar la información de la base de conocimiento para recomendar el TIPO DE GOLPE específico (flop shot, pitch, chip, punch, etc.)
-7. Recomendar el palo de golf MÁS CERCANO a la distancia objetivo
-8. Indicar el tipo de swing (completo, 3/4, 1/2) según la distancia exacta necesaria
-9. Recomendar la distancia objetivo correcta considerando la distancia al hoyo
+2. Evaluar si el hoyo tiene curvas (dogleg) y decidir entre trayectoria directa o conservadora
+3. Considerar la distancia exacta al objetivo (puede ser la bandera o un waypoint intermedio)
+4. Evaluar el tipo de terreno donde está la bola
+5. Analizar los obstáculos en la trayectoria recomendada
+6. Considerar la situación de la bola y lo que ve el jugador (si está disponible)
+7. Usar la información de la base de conocimiento para recomendar el TIPO DE GOLPE específico (flop shot, pitch, chip, punch, etc.)
+8. Recomendar el palo de golf MÁS CERCANO a la distancia objetivo
+9. Indicar el tipo de swing (completo, 3/4, 1/2) según la distancia exacta necesaria
+10. Recomendar la distancia objetivo correcta considerando la estrategia del hoyo
 
 Información que recibirás:
 - Hoyo actual: número de hoyo, par, longitud del hoyo
-- Distancia al hoyo: distancia exacta en metros y yardas hasta la bandera
+- Análisis de trayectorias: evaluación de trayectoria directa vs conservadora
+- Distancia al objetivo: distancia exacta en metros y yardas (puede ser bandera o waypoint intermedio)
 - Tipo de terreno: terreno normal, bunker, water, trees, rough_heavy, out_of_bounds
-- Obstáculos en el camino: lista de obstáculos que hay entre la bola y la bandera
+- Obstáculos en el camino: lista de obstáculos en la trayectoria recomendada
 - Situación de la bola y visión del jugador: descripción opcional de la posición de la bola y lo que observa el jugador
 - Base de conocimiento: información relevante sobre técnicas de golf, estrategias y consejos
+
+IMPORTANTE - HOYOS CON CURVAS (DOGLEG):
+Algunos hoyos tienen curvas (dogleg) donde ir directo a la bandera es arriesgado (agua, árboles, OB).
+En estos casos, recibirás una TRAYECTORIA CONSERVADORA que indica un waypoint intermedio seguro.
+
+Cuando se recomiende trayectoria conservadora:
+- El objetivo NO es la bandera, sino un punto estratégico intermedio (ej: vértice de la curva)
+- Tu recomendación debe enfocarse en alcanzar ese waypoint, NO la bandera
+- Explica claramente que es un golpe de posicionamiento, no un golpe a green
+- Menciona por qué la ruta directa es arriesgada (agua, árboles, etc.)
+- Ejemplo: "Te recomiendo jugar conservador hacia el centro de la calle antes de la curva, 
+  usando un hierro 7 para hacer 80 metros. La línea directa a bandera atraviesa agua."
 
 REGLAS CRÍTICAS para selección de palo y distancia:
 1. SELECCIÓN DE PALO: Elige el palo cuya distancia promedio esté MÁS CERCA de la distancia al hoyo
@@ -105,19 +119,21 @@ def get_next_shot_recommendation(
     terrain_type: Optional[str],
     obstacles: List[dict],
     player_club_statistics: Optional[List[dict]] = None,
-    ball_situation_description: Optional[str] = None
+    ball_situation_description: Optional[str] = None,
+    trajectory_info: Optional[dict] = None
 ) -> str:
     """
     Función para obtener una recomendación de palo de golf basada en información detallada del campo.
     
     Args:
         hole_info: Información del hoyo (hole_number, par, length, course_name)
-        distance_meters: Distancia en metros hasta la bandera
-        distance_yards: Distancia en yardas hasta la bandera
+        distance_meters: Distancia en metros hasta el objetivo (puede ser bandera o waypoint)
+        distance_yards: Distancia en yardas hasta el objetivo
         terrain_type: Tipo de terreno (bunker, water, trees, rough_heavy, out_of_bounds, o None si es normal)
-        obstacles: Lista de obstáculos entre la bola y la bandera
+        obstacles: Lista de obstáculos en la trayectoria recomendada
         player_club_statistics: Lista opcional con estadísticas de palos del jugador
         ball_situation_description: Descripción opcional de la situación de la bola y lo que ve el jugador
+        trajectory_info: Información sobre análisis de trayectorias (directa vs conservadora)
         
     Returns:
         La recomendación del agente en lenguaje natural
@@ -166,6 +182,10 @@ def get_next_shot_recommendation(
     kb_results = query_knowledge_base(kb_query, max_results=5)
     kb_formatted = format_knowledge_base_results(kb_results)
     
+    # Variables auxiliares para el tipo de objetivo de la trayectoria
+    trajectory_target_type = None
+    trajectory_waypoint_description = None
+    
     # Construir el prompt con toda la información disponible
     prompt_parts = []
     
@@ -177,9 +197,90 @@ def get_next_shot_recommendation(
     if 'course_name' in hole_info:
         prompt_parts.append(f"Campo: {hole_info['course_name']}")
     
-    # Distancia al hoyo
-    prompt_parts.append("\n=== DISTANCIA AL HOYO ===")
-    prompt_parts.append(f"Distancia exacta: {distance_meters:.2f} metros ({distance_yards:.2f} yardas)")
+    # Análisis de Trayectorias (si está disponible)
+    if trajectory_info:
+        # Nuevo formato (lógica evolutiva) con trayectoria_optima
+        if trajectory_info.get('trayectoria_optima'):
+            opt = trajectory_info['trayectoria_optima']
+            risk_val = None
+            if isinstance(opt.get('risk_level'), dict):
+                risk_val = opt['risk_level'].get('total')
+            else:
+                risk_val = opt.get('risk_level')
+            
+            trajectory_target_type = opt.get('target')
+            trajectory_waypoint_description = opt.get('waypoint_description')
+            
+            prompt_parts.append("\n=== ANÁLISIS DE TRAYECTORIAS (EVOLUTIVO) ===")
+            prompt_parts.append(f"Trayectoria óptima (objetivo: {opt.get('target', 'desconocido')}): {opt.get('description', '')}")
+            prompt_parts.append(f"Distancia: {opt.get('distance_meters', 0):.0f}m | Obstáculos: {opt.get('obstacle_count', 0)} | Riesgo: {risk_val}")
+            if opt.get('club_recommendation', {}).get('recommended_club'):
+                prompt_parts.append(f"Palo sugerido por cálculo: {opt['club_recommendation'].get('recommended_club')}")
+            
+            # Mostrar trayectorias alternativas si existen
+            alt_risk = trajectory_info.get('trayectoria_riesgo')
+            alt_cons = trajectory_info.get('trayectoria_conservadora')
+            
+            if alt_risk or alt_cons:
+                prompt_parts.append("\nOtras trayectorias evaluadas:")
+                if alt_risk:
+                    alt_risk_val = alt_risk.get('risk_level', {})
+                    alt_risk_total = alt_risk_val.get('total') if isinstance(alt_risk_val, dict) else alt_risk_val
+                    prompt_parts.append(f"- Trayectoria de mayor riesgo: {alt_risk.get('description', '')} | Dist: {alt_risk.get('distance_meters', 0):.0f}m | Riesgo: {alt_risk_total}")
+                if alt_cons:
+                    alt_cons_val = alt_cons.get('risk_level', {})
+                    alt_cons_total = alt_cons_val.get('total') if isinstance(alt_cons_val, dict) else alt_cons_val
+                    prompt_parts.append(f"- Trayectoria conservadora: {alt_cons.get('description', '')} | Dist: {alt_cons.get('distance_meters', 0):.0f}m | Riesgo: {alt_cons_total}")
+        else:
+            # Formato anterior (directa vs conservadora)
+            prompt_parts.append("\n=== ANÁLISIS DE TRAYECTORIAS ===")
+            recommended = trajectory_info.get('recommended', 'direct')
+            
+            if recommended == 'conservative' and trajectory_info.get('conservative_trajectory'):
+                prompt_parts.append("⚠️ IMPORTANTE: Se recomienda TRAYECTORIA CONSERVADORA")
+                prompt_parts.append(f"Motivo: {trajectory_info.get('description', '')}")
+                
+                if trajectory_info.get('waypoint_description'):
+                    prompt_parts.append(f"Objetivo: {trajectory_info['waypoint_description']}")
+                
+                # Comparación con trayectoria directa
+                direct_traj = trajectory_info.get('direct_trajectory', {})
+                conservative_traj = trajectory_info.get('conservative_trajectory', {})
+                
+                prompt_parts.append("\n📊 Comparación de trayectorias:")
+                prompt_parts.append(f"  • DIRECTA a bandera: {direct_traj.get('distance_meters', 0):.0f}m - "
+                                  f"Obstáculos: {direct_traj.get('obstacle_count', 0)} - "
+                                  f"Riesgo: {direct_traj.get('risk_level', 'unknown').upper()}")
+                
+                if direct_traj.get('obstacles'):
+                    prompt_parts.append("    Obstáculos en línea directa:")
+                    for obs in direct_traj['obstacles']:
+                        prompt_parts.append(f"      - {obs.get('name', 'Sin nombre')} ({obs.get('type', 'desconocido')})")
+                
+                prompt_parts.append(f"  • CONSERVADORA: {conservative_traj.get('distance_meters', 0):.0f}m - "
+                                  f"Obstáculos: {conservative_traj.get('obstacle_count', 0)} - "
+                                  f"Riesgo: {conservative_traj.get('risk_level', 'unknown').upper()} ✅")
+                
+                prompt_parts.append("\n🎯 ESTRATEGIA RECOMENDADA:")
+                prompt_parts.append("En lugar de ir directo a la bandera, juega conservador siguiendo el diseño del hoyo.")
+                prompt_parts.append("Este hoyo tiene curvas (dogleg) y la ruta directa es arriesgada.")
+                prompt_parts.append("Tu recomendación debe enfocarse en el waypoint conservador, no en la bandera.")
+            else:
+                prompt_parts.append("✅ Trayectoria directa a la bandera es viable")
+                prompt_parts.append(f"Análisis: {trajectory_info.get('description', '')}")
+    
+    # Distancia al objetivo (puede ser bandera o waypoint)
+    prompt_parts.append("\n=== DISTANCIA AL OBJETIVO ===")
+    if trajectory_target_type and trajectory_target_type != 'flag':
+        prompt_parts.append(f"Distancia al objetivo estratégico: {distance_meters:.2f} metros ({distance_yards:.2f} yardas)")
+        if trajectory_waypoint_description:
+            prompt_parts.append(f"Objetivo: {trajectory_waypoint_description}")
+        prompt_parts.append("⚠️ Nota: Esta NO es la distancia a la bandera, sino al siguiente punto estratégico")
+    elif trajectory_info and trajectory_info.get('recommended') == 'conservative':
+        prompt_parts.append(f"Distancia al waypoint conservador: {distance_meters:.2f} metros ({distance_yards:.2f} yardas)")
+        prompt_parts.append("⚠️ Nota: Esta NO es la distancia a la bandera, sino al siguiente punto estratégico")
+    else:
+        prompt_parts.append(f"Distancia a la bandera: {distance_meters:.2f} metros ({distance_yards:.2f} yardas)")
     
     # Tipo de terreno
     prompt_parts.append("\n=== TIPO DE TERRENO ACTUAL ===")

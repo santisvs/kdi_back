@@ -195,6 +195,35 @@ def import_golf_course_from_file(config_path: Path):
                     (hole_id, description, path_wkt),
                 )
 
+            # 2.d) Puntos estratégicos (pueden ser varios por hoyo)
+            strategic_points = hole_cfg.get("strategic_points", [])
+            if strategic_points:
+                print(f"  - Insertando {len(strategic_points)} puntos estratégicos...")
+            for sp in strategic_points:
+                sp_type = sp.get("type")
+                sp_name = sp.get("name")
+                sp_description = sp.get("description")
+                sp_distance_to_flag = sp.get("distance_to_flag")
+                sp_priority = sp.get("priority", 5)
+                sp_wkt = sp.get("wkt")
+                if not sp_type or not sp_wkt:
+                    continue
+
+                cur.execute(
+                    """
+                    INSERT INTO strategic_point (
+                        hole_id, type, name, description, 
+                        position, distance_to_flag, priority
+                    )
+                    VALUES (
+                        %s, %s, %s, %s,
+                        ST_GeogFromText(%s), %s, %s
+                    );
+                    """,
+                    (hole_id, sp_type, sp_name, sp_description, 
+                     sp_wkt, sp_distance_to_flag, sp_priority),
+                )
+
     print("\n✓ Importación completada correctamente.")
 
 

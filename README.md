@@ -182,6 +182,54 @@ curl -X POST http://localhost:5000/golf \
 }
 ```
 
+### POST /golf/next-shot
+Endpoint para obtener recomendación del siguiente golpe basándose en información detallada del campo.
+
+**Ejemplo de petición:**
+```bash
+curl -X POST http://localhost:5000/golf/next-shot \
+  -H "Content-Type: application/json" \
+  -d '{
+    "latitude": 40.44445,
+    "longitude": -3.87095,
+    "hole_id": 1,
+    "user_id": 1,
+    "ball_situation_description": "Viento en contra moderado"
+  }'
+```
+
+**Ejemplo de respuesta:**
+```json
+{
+  "recommendation": "Estás a 88 metros del hoyo, te recomiendo utilizar un Pitching Wedge con swing completo intentando hacer un approach al centro del green. Ten en cuenta el viento en contra que puede reducir la distancia.",
+  "analysis": {
+    "hole_info": {
+      "id": 1,
+      "hole_number": 1,
+      "par": 4,
+      "length": 367,
+      "course_name": "Las Rejas Club de Golf"
+    },
+    "distance_meters": 88.0,
+    "distance_yards": 96.24,
+    "terrain_type": null,
+    "obstacles_count": 1,
+    "obstacles": [
+      {
+        "id": 1,
+        "type": "trees",
+        "name": "Árboles a la derecha"
+      }
+    ],
+    "player_profile_used": true
+  }
+}
+```
+
+**Parámetros opcionales:**
+- `user_id`: Si se proporciona, usa las estadísticas personalizadas del jugador
+- `ball_situation_description`: Descripción de la situación (viento, posición, etc.)
+
 ## Base de Datos PostgreSQL/PostGIS
 
 ### Sistema de Migraciones
@@ -258,6 +306,25 @@ pytest tests/e2e
 
 - `scripts/run_dev.py`: Ejecutar servidor en modo desarrollo
 - `scripts/generate_golf_config_from_info.py`: Generar JSONs con WKT desde info
+
+## Características Principales
+
+### 📍 Análisis Geoespacial
+- Identificación automática de hoyos por GPS (PostGIS)
+- Cálculo de distancias precisas
+- Detección de terreno (bunker, rough, árboles, agua)
+- Análisis de obstáculos en el camino
+
+### 🤖 Agentes IA
+- Agente de golf con AWS Bedrock (Amazon Nova Lite)
+- Agente de clima
+- Integración con Knowledge Base de golf
+- Recomendaciones personalizadas según estadísticas del jugador
+
+## Documentación Adicional
+
+- `GUIA_FUNCIONES_LOGICAS.md`: Guía de funciones lógicas del campo
+- `DISEÑO_PERFIL_JUGADOR.md`: Diseño del perfil de jugador
 
 ## Notas
 

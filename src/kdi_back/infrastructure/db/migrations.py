@@ -203,7 +203,7 @@ def create_hole_point_table(drop_if_exists=False):
             cur.execute("""
                 CREATE TABLE hole_point (
                     id SERIAL PRIMARY KEY,
-                    hole_id INT REFERENCES hole(id),
+                    hole_id INT REFERENCES hole(id) ON DELETE CASCADE,
                     type TEXT CHECK (type IN (
                         'tee', 'flag', 'green_start', 'tee_white', 'tee_yellow'
                     )),
@@ -265,7 +265,7 @@ def create_obstacle_table(drop_if_exists=False):
             cur.execute("""
                 CREATE TABLE obstacle (
                     id SERIAL PRIMARY KEY,
-                    hole_id INT REFERENCES hole(id),
+                    hole_id INT REFERENCES hole(id) ON DELETE CASCADE,
                     type TEXT CHECK (
                         type IN ('bunker', 'water', 'trees', 'rough_heavy', 'out_of_bounds')
                     ),
@@ -328,7 +328,7 @@ def create_optimal_shot_table(drop_if_exists=False):
             cur.execute("""
                 CREATE TABLE optimal_shot (
                     id SERIAL PRIMARY KEY,
-                    hole_id INT REFERENCES hole(id),
+                    hole_id INT REFERENCES hole(id) ON DELETE CASCADE,
                     description TEXT,
                     path GEOGRAPHY(LineString, 4326)
                 );
@@ -341,6 +341,102 @@ def create_optimal_shot_table(drop_if_exists=False):
             """)
 
             print("✓ Tabla 'optimal_shot' creada exitosamente")
+            return True
+
+    except psycopg2.Error as e:
+        print(f"✗ Error de PostgreSQL: {e}")
+        print(f"  Código de error: {e.pgcode}")
+        print(f"  Mensaje: {e.pgerror}")
+        return False
+    except Exception as e:
+        print(f"✗ Error inesperado: {e}")
+        return False
+
+
+def create_strategic_point_table(drop_if_exists=False):
+    """
+    Crea la tabla strategic_point en la base de datos.
+    
+    Puntos estratégicos son ubicaciones de interés en el hoyo (landing zones,
+    layup points, etc.) que ayudan a calcular trayectorias alternativas.
+    
+    Args:
+        drop_if_exists: Si es True, elimina la tabla si existe antes de crearla
+    
+    Returns:
+        bool: True si la operación fue exitosa, False en caso contrario
+    """
+    try:
+        with Database.get_cursor(commit=True) as (conn, cur):
+            if drop_if_exists:
+                print("Eliminando tabla 'strategic_point' si existe...")
+                cur.execute("DROP TABLE IF EXISTS strategic_point CASCADE;")
+                print("Tabla 'strategic_point' eliminada (si existía)")
+
+            print("Verificando existencia de tabla 'hole'...")
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'hole'
+                );
+            """)
+            if not cur.fetchone()['exists']:
+                raise Exception("La tabla 'hole' no existe. Créala primero.")
+
+            postgis_version = check_postgis()
+            if not postgis_version:
+                print("⚠ PostGIS no está instalado. Intentando instalar...")
+                if not install_postgis():
+                    print("\n✗ No se pudo instalar PostGIS automáticamente.")
+                    return False
+                postgis_version = check_postgis()
+            print(f"✓ PostGIS disponible: versión {postgis_version}")
+
+            print("Creando tabla 'strategic_point'...")
+            cur.execute("""
+                CREATE TABLE strategic_point (
+                    id SERIAL PRIMARY KEY,
+                    hole_id INT REFERENCES hole(id) ON DELETE CASCADE,
+                    type VARCHAR(50) NOT NULL,
+                    name VARCHAR(100),
+                    description TEXT,
+                    position GEOGRAPHY(Point, 4326) NOT NULL,
+                    distance_to_flag INT,
+                    priority INT DEFAULT 5,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+
+            print("Creando índice espacial en 'position' de 'strategic_point'...")
+            cur.execute("""
+                CREATE INDEX idx_strategic_point_position 
+                ON strategic_point USING GIST(position);
+            """)
+
+            print("Creando índice en 'hole_id' de 'strategic_point'...")
+            cur.execute("""
+                CREATE INDEX idx_strategic_point_hole_id 
+                ON strategic_point(hole_id);
+            """)
+
+            print("Creando índice en 'type' de 'strategic_point'...")
+            cur.execute("""
+                CREATE INDEX idx_strategic_point_type 
+                ON strategic_point(type);
+            """)
+
+            print("✓ Tabla 'strategic_point' creada exitosamente")
+            print("\nEstructura de la tabla:")
+            print("  - id: SERIAL PRIMARY KEY")
+            print("  - hole_id: INT REFERENCES hole(id)")
+            print("  - type: VARCHAR(50) - fairway_center_far, fairway_center_mid, layup_zone, etc.")
+            print("  - name: VARCHAR(100)")
+            print("  - description: TEXT")
+            print("  - position: GEOGRAPHY(Point, 4326)")
+            print("  - distance_to_flag: INT")
+            print("  - priority: INT (mayor = más importante)")
+            print("  - created_at: TIMESTAMP")
             return True
 
     except psycopg2.Error as e:
@@ -455,6 +551,7 @@ def drop_all_golf_tables():
     try:
         with Database.get_cursor(commit=True) as (conn, cur):
             print("Eliminando tablas de golf en orden correcto...")
+            cur.execute("DROP TABLE IF EXISTS strategic_point CASCADE;")
             cur.execute("DROP TABLE IF EXISTS optimal_shot CASCADE;")
             cur.execute("DROP TABLE IF EXISTS obstacle CASCADE;")
             cur.execute("DROP TABLE IF EXISTS hole_point CASCADE;")
@@ -500,6 +597,10 @@ def create_all_golf_tables(recreate=False):
 
     print("→ Creando tabla 'optimal_shot'...")
     if not create_optimal_shot_table(drop_if_exists=False):
+        return False
+
+    print("→ Creando tabla 'strategic_point'...")
+    if not create_strategic_point_table(drop_if_exists=False):
         return False
 
     print("✓ Todas las tablas de golf han sido creadas correctamente")
