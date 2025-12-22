@@ -1,0 +1,9 @@
+Golpe recto: Trayectoria directa hacia el objetivo. Es el golpe más fiable y el más recomendado cuando hay obstáculos cercanos.
+
+Golpe controlado: Se ejecuta reduciendo velocidad para priorizar precisión. Ideal en situaciones de riesgo o cuando se busca colocación.
+
+Fade: Trayectoria ligeramente de izquierda a derecha. Útil para evitar obstáculos situados a la izquierda.
+
+Draw: Trayectoria de derecha a izquierda. Requiere mayor control y no se recomienda a jugadores que no lo dominen.
+
+Lay-up táctico: Golpe intencionadamente corto para evitar un obstáculo y preparar un siguiente tiro cómodo.

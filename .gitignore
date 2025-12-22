@@ -2,4 +2,9 @@
 .venv
 __pycache__
 *.pyc
-data/
+*.egg-info/
+# Ignorar JSON temporales generados por scripts, pero conservar GeoJSON fuente
+data/campos/*.json
+data/campos_info/*.json
+# Conservar GeoJSON (fuente de verdad)
+!data/campos_info/*.geojson
