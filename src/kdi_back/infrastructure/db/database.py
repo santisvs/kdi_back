@@ -32,7 +32,8 @@ class Database:
                 port=settings.DB_PORT,
                 database=settings.DB_NAME,
                 user=settings.DB_USER,
-                password=settings.DB_PASSWORD
+                password=settings.DB_PASSWORD,
+                connect_timeout=10  # Timeout de conexión de 10 segundos
             )
             
             if cls._connection_pool:
@@ -51,9 +52,15 @@ class Database:
         
         Returns:
             Objeto de conexión de psycopg2
+            
+        Raises:
+            Exception: Si no se puede crear el pool de conexiones
         """
         if cls._connection_pool is None:
-            cls.initialize_pool()
+            try:
+                cls.initialize_pool()
+            except Exception as e:
+                raise Exception(f"No se pudo inicializar el pool de conexiones. Verifica las variables de entorno DB_*: {e}")
         return cls._connection_pool.getconn()
 
     @classmethod

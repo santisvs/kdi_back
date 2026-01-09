@@ -8,3 +8,7 @@ data/campos/*.json
 data/campos_info/*.json
 # Conservar GeoJSON (fuente de verdad)
 !data/campos_info/*.geojson
+# Elastic Beanstalk Files
+.elasticbeanstalk/*
+!.elasticbeanstalk/*.cfg.yml
+!.elasticbeanstalk/*.global.yml

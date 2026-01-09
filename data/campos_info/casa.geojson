@@ -1,0 +1,394 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Hoyo 1 - Fairway",
+        "type": "fairway",
+        "hole_number": 1,
+        "par": 3,
+        "length": 100
+      },
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              -3.8659432384207832,
+              40.446829755698786
+            ],
+            [
+              -3.865978666986166,
+              40.446830518758645
+            ],
+            [
+              -3.8659796696813657,
+              40.44679414624966
+            ],
+            [
+              -3.8660602195325566,
+              40.44677125445068
+            ],
+            [
+              -3.8660999931105096,
+              40.44676489561601
+            ],
+            [
+              -3.866099658878767,
+              40.446754467126624
+            ],
+            [
+              -3.865984014693936,
+              40.44675955419481
+            ],
+            [
+              -3.8659449095794116,
+              40.446775832810886
+            ],
+            [
+              -3.8659432384207832,
+              40.446829755698786
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "id": 0
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Hoyo 1 - flag",
+        "type": "flag",
+        "hole_number": 1
+      },
+      "geometry": {
+        "coordinates": [
+          -3.8661322263790794,
+          40.446758353114234
+        ],
+        "type": "Point"
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Tee amarillas",
+        "type": "tee_yellow",
+        "hole_number": 1
+      },
+      "geometry": {
+        "coordinates": [
+          -3.8659473617254605,
+          40.446853428513606
+        ],
+        "type": "Point"
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Tee Blancas",
+        "type": "tee_white",
+        "hole_number": 1
+      },
+      "geometry": {
+        "coordinates": [
+          -3.86593534973386,
+          40.44690661484404
+        ],
+        "type": "Point"
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Tee rojas",
+        "type": "tee",
+        "hole_number": 1
+      },
+      "geometry": {
+        "coordinates": [
+          -3.865947972306742,
+          40.44683707992934
+        ],
+        "type": "Point"
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Hoyo 1 - Green",
+        "type": "green",
+        "hole_number": 1,
+        "par": 3,
+        "length": 100
+      },
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              -3.86614550254842,
+              40.446762887483544
+            ],
+            [
+              -3.8661449151578324,
+              40.446750818223194
+            ],
+            [
+              -3.8661005671661144,
+              40.44675461780514
+            ],
+            [
+              -3.8661005671661144,
+              40.44676489902662
+            ],
+            [
+              -3.86614550254842,
+              40.446762887483544
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Arboles izquierda 1_1",
+        "type": "trees",
+        "hole_number": 1
+      },
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              -3.8659421960738314,
+              40.44682980564045
+            ],
+            [
+              -3.8659437495493876,
+              40.44677542405606
+            ],
+            [
+              -3.8659297682692397,
+              40.446774005405445
+            ],
+            [
+              -3.8659263506229706,
+              40.44682980564045
+            ],
+            [
+              -3.8659421960738314,
+              40.44682980564045
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Bunker izquierda 1_1",
+        "type": "bunker",
+        "hole_number": 1
+      },
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              -3.8659446523512884,
+              40.44677503707936
+            ],
+            [
+              -3.8659839284713087,
+              40.446758319233425
+            ],
+            [
+              -3.8659839284713087,
+              40.44674742730106
+            ],
+            [
+              -3.8659336683507206,
+              40.446745654195695
+            ],
+            [
+              -3.865929674169166,
+              40.44677326397476
+            ],
+            [
+              -3.8659446523512884,
+              40.44677503707936
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Agua derecha 1_1",
+        "type": "water",
+        "hole_number": 1
+      },
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              -3.8659794376002026,
+              40.44683041603025
+            ],
+            [
+              -3.8660612519730932,
+              40.446826310880965
+            ],
+            [
+              -3.8660621510321675,
+              40.44677134747849
+            ],
+            [
+              -3.86598033665922,
+              40.4467943819391
+            ],
+            [
+              -3.8659794376002026,
+              40.44683041603025
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Arboles izquierda 1_2",
+        "type": "trees",
+        "hole_number": 1
+      },
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              -3.8659851316566574,
+              40.44675880397759
+            ],
+            [
+              -3.8661011102745135,
+              40.446753786568536
+            ],
+            [
+              -3.866144864482294,
+              40.44674968141456
+            ],
+            [
+              -3.866145164168614,
+              40.44674512013299
+            ],
+            [
+              -3.8659851316566574,
+              40.4467476288379
+            ],
+            [
+              -3.8659851316566574,
+              40.44675880397759
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Hoyo 1 - Golpe 1",
+        "type": "optimal_shot",
+        "hole_number": 1,
+        "shot_number": 1,
+        "description": "Salida con wedge y aprouch corto"
+      },
+      "geometry": {
+        "coordinates": [
+          [
+            -3.865947533288562,
+            40.44685282210597
+          ],
+          [
+            -3.866099942035845,
+            40.446759733355464
+          ]
+        ],
+        "type": "LineString"
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Centro calle para approach corto a 5m de green",
+        "type": "fairway_center_mid",
+        "hole_number": 1,
+        "distance_to_flag": 5,
+        "priority": 4
+      },
+      "geometry": {
+        "coordinates": [
+          -3.865990330765385,
+          40.446769259987605
+        ],
+        "type": "Point"
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Campo Mi Casa (INFO)",
+        "type": "course_location",
+        "description": "Ubicación del campo de golf"
+      },
+      "geometry": {
+        "coordinates": [
+          -3.8660129014038773,
+          40.44685477273919
+        ],
+        "type": "Point"
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "bbox",
+        "hole_number": 1
+      },
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              -3.866158129133993,
+              40.44691627131576
+            ],
+            [
+              -3.866158129133993,
+              40.446738660957436
+            ],
+            [
+              -3.8659133693649324,
+              40.446738660957436
+            ],
+            [
+              -3.8659133693649324,
+              40.44691627131576
+            ],
+            [
+              -3.866158129133993,
+              40.44691627131576
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "id": 13
+    }
+  ]
+}

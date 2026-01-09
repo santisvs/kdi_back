@@ -53,6 +53,26 @@ class GolfService:
         
         return hole
     
+    def is_ball_on_green(self, latitude: float, longitude: float, hole_id: Optional[int] = None) -> bool:
+        """
+        Determina si la bola está en el green.
+        
+        Args:
+            latitude: Latitud de la posición de la bola
+            longitude: Longitud de la posición de la bola
+            hole_id: ID del hoyo (opcional, se identifica automáticamente si no se proporciona)
+            
+        Returns:
+            True si la bola está en el green, False si no
+        """
+        if hole_id is None:
+            hole = self.golf_repository.find_hole_by_position(latitude, longitude)
+            if not hole:
+                return False
+            hole_id = hole['id']
+        
+        return self.golf_repository.is_ball_on_green(hole_id, latitude, longitude)
+    
     def get_hole_by_id(self, hole_id: int) -> Optional[Dict[str, Any]]:
         """
         Obtiene la información de un hoyo por su ID.
@@ -74,6 +94,15 @@ class GolfService:
         hole = self.golf_repository.get_hole_by_id(hole_id)
         
         return hole
+    
+    def get_all_courses(self) -> List[Dict[str, Any]]:
+        """
+        Obtiene todos los campos de golf.
+        
+        Returns:
+            Lista de diccionarios con información de los campos (id, name)
+        """
+        return self.golf_repository.get_all_courses()
     
     def get_hole_by_course_and_number(self, course_id: int, hole_number: int) -> Optional[Dict[str, Any]]:
         """

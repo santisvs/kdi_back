@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 """Player routes"""
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, g
 from kdi_back.api.dependencies import get_player_service
+from kdi_back.api.middleware.auth_middleware import require_auth
 
 player_bp = Blueprint('player', __name__)
 
 
 @player_bp.route('/player', methods=['POST'])
+@require_auth
 def create_player():
     """
     Endpoint para crear un usuario con su perfil de jugador inicial.
@@ -178,6 +180,147 @@ def create_player():
     except Exception as e:
         return jsonify({
             "error": "Error al crear el usuario y perfil de jugador",
+            "details": str(e)
+        }), 500
+
+
+@player_bp.route('/player/profile', methods=['GET'])
+@require_auth
+def get_player_profile():
+    """
+    Endpoint para obtener el perfil de jugador del usuario autenticado.
+    
+    Respuesta exitosa (200):
+    {
+        "player_profile": {
+            "id": 1,
+            "user_id": 1,
+            "handicap": 12.5,
+            "gender": "male",
+            "preferred_hand": "right",
+            "years_playing": 5,
+            "skill_level": "intermediate",
+            "notes": "Jugador regular los fines de semana",
+            "created_at": "2024-01-15T10:30:00",
+            "updated_at": "2024-01-15T10:30:00"
+        }
+    }
+    
+    Respuesta si no existe perfil (404):
+    {
+        "error": "Perfil de jugador no encontrado"
+    }
+    """
+    try:
+        # Obtener el usuario autenticado desde g (establecido por require_auth)
+        user_id = g.current_user['id']
+        
+        # Obtener el servicio de jugadores
+        player_service = get_player_service()
+        
+        # Obtener el perfil de jugador
+        player_profile = player_service.player_repository.get_player_profile_by_user_id(user_id)
+        
+        if not player_profile:
+            return jsonify({"error": "Perfil de jugador no encontrado"}), 404
+        
+        # Convertir fechas a strings para JSON
+        def format_datetime(value):
+            if value is None:
+                return None
+            if hasattr(value, 'isoformat'):
+                return value.isoformat()
+            return str(value)
+        
+        response = {
+            "player_profile": {
+                "id": player_profile['id'],
+                "user_id": player_profile['user_id'],
+                "handicap": float(player_profile['handicap']) if player_profile.get('handicap') else None,
+                "gender": player_profile.get('gender'),
+                "preferred_hand": player_profile.get('preferred_hand'),
+                "years_playing": player_profile.get('years_playing'),
+                "skill_level": player_profile.get('skill_level'),
+                "notes": player_profile.get('notes'),
+                "created_at": format_datetime(player_profile.get('created_at')),
+                "updated_at": format_datetime(player_profile.get('updated_at'))
+            }
+        }
+        
+        return jsonify(response), 200
+        
+    except Exception as e:
+        return jsonify({
+            "error": "Error al obtener el perfil de jugador",
+            "details": str(e)
+        }), 500
+
+
+@player_bp.route('/player/club-statistics', methods=['GET'])
+@require_auth
+def get_player_club_statistics():
+    """
+    Endpoint para obtener las estadísticas de palos del usuario autenticado.
+    
+    Respuesta exitosa (200):
+    {
+        "club_statistics": [
+            {
+                "id": 1,
+                "player_profile_id": 1,
+                "golf_club_id": 5,
+                "club_name": "Driver",
+                "club_type": "wood",
+                "club_number": null,
+                "average_distance_meters": 220.5,
+                "min_distance_meters": 200.0,
+                "max_distance_meters": 240.0,
+                "average_error_meters": 15.2,
+                "error_std_deviation": 5.5,
+                "shots_recorded": 50
+            },
+            ...
+        ]
+    }
+    
+    Respuesta si no existe perfil o estadísticas (404):
+    {
+        "error": "Perfil de jugador no encontrado o sin estadísticas"
+    }
+    """
+    try:
+        # Obtener el usuario autenticado desde g (establecido por require_auth)
+        user_id = g.current_user['id']
+        
+        # Obtener el servicio de jugadores
+        player_service = get_player_service()
+        
+        # Obtener el perfil de jugador
+        player_profile = player_service.player_repository.get_player_profile_by_user_id(user_id)
+        
+        if not player_profile:
+            return jsonify({"error": "Perfil de jugador no encontrado o sin estadísticas"}), 404
+        
+        # Obtener las estadísticas de palos
+        club_statistics = player_service.player_repository.get_player_club_statistics(
+            player_profile['id']
+        )
+        
+        if not club_statistics:
+            return jsonify({
+                "error": "Perfil de jugador no encontrado o sin estadísticas",
+                "club_statistics": []
+            }), 404
+        
+        response = {
+            "club_statistics": club_statistics
+        }
+        
+        return jsonify(response), 200
+        
+    except Exception as e:
+        return jsonify({
+            "error": "Error al obtener las estadísticas de palos",
             "details": str(e)
         }), 500
 

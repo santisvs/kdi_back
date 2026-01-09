@@ -2,9 +2,9 @@
 """
 Helper para consultar AWS Bedrock Knowledge Base
 """
-import boto3
 from typing import Optional, List, Dict
 from kdi_back.infrastructure.config import settings
+from kdi_back.infrastructure.config.aws_client import get_bedrock_agent_runtime_client
 
 
 def query_knowledge_base(
@@ -38,12 +38,8 @@ def query_knowledge_base(
     try:
         # Crear cliente de Bedrock Agent Runtime en la región de la Knowledge Base
         # IMPORTANTE: La Knowledge Base se encuentra en la región eu-south-2
-        bedrock_agent = boto3.client(
-            'bedrock-agent-runtime',
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-            region_name=kb_region
-        )
+        # Esta función detecta automáticamente si está en AWS (usa IAM Role) o local (usa credenciales)
+        bedrock_agent = get_bedrock_agent_runtime_client(region_name=kb_region)
         
         # Realizar la consulta usando retrieve
         response = bedrock_agent.retrieve(

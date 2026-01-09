@@ -178,4 +178,25 @@ class PlayerRepository(ABC):
             Lista de diccionarios con información de estadísticas por palo
         """
         pass
+    
+    @abstractmethod
+    def update_club_statistics_after_stroke(self, player_profile_id: int, club_id: int,
+                                           actual_distance: float, target_distance: float,
+                                           quality_score: float) -> None:
+        """
+        Actualiza las estadísticas de un palo después de evaluar un golpe.
+        
+        Usa media móvil ponderada para actualizar:
+        - average_distance_meters
+        - average_error_meters
+        - shots_recorded
+        
+        Args:
+            player_profile_id: ID del perfil de jugador
+            club_id: ID del palo utilizado
+            actual_distance: Distancia real alcanzada en metros
+            target_distance: Distancia objetivo en metros
+            quality_score: Calidad del golpe (0-100)
+        """
+        pass
 

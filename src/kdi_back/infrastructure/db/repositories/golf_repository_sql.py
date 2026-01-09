@@ -16,7 +16,10 @@ class GolfRepositorySQL(GolfRepository):
         """
         Encuentra el hoyo en el que se encuentra una bola según su posición GPS.
         
-        Usa PostGIS para verificar si el punto está dentro del polígono del fairway.
+        Usa una estrategia de detección en cascada:
+        1. Primero busca si el punto está dentro del polígono del fairway
+        2. Si no encuentra, busca si está dentro del polígono del green
+        3. Si aún no encuentra, busca el hoyo más cercano por distancia a la bandera (fallback)
         
         Args:
             latitude: Latitud de la posición de la bola
@@ -26,9 +29,7 @@ class GolfRepositorySQL(GolfRepository):
             Diccionario con la información del hoyo si se encuentra, None si no
         """
         with Database.get_cursor(commit=False) as (conn, cur):
-            # Consulta usando PostGIS para verificar si el punto está dentro del fairway
-            # Nota: fairway_polygon es GEOGRAPHY, pero ST_Contains trabaja con GEOMETRY
-            # Hacemos cast a geometry para la comparación
+            # ESTRATEGIA 1: Buscar en fairway_polygon
             cur.execute("""
                 SELECT 
                     h.id,
@@ -48,7 +49,61 @@ class GolfRepositorySQL(GolfRepository):
             """, (longitude, latitude))  # PostGIS usa (lon, lat)
             
             result = cur.fetchone()
+            if result:
+                return dict(result)
             
+            # ESTRATEGIA 2: Buscar en green_polygon
+            cur.execute("""
+                SELECT 
+                    h.id,
+                    h.course_id,
+                    h.hole_number,
+                    h.par,
+                    h.length,
+                    gc.name AS course_name
+                FROM hole h
+                INNER JOIN golf_course gc ON h.course_id = gc.id
+                WHERE h.green_polygon IS NOT NULL
+                  AND ST_Contains(
+                      h.green_polygon::geometry,
+                      ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geometry
+                  )
+                LIMIT 1;
+            """, (longitude, latitude))  # PostGIS usa (lon, lat)
+            
+            result = cur.fetchone()
+            if result:
+                return dict(result)
+            
+            # ESTRATEGIA 3: Fallback - Buscar el hoyo más cercano por distancia a la bandera
+            # Si el punto no está dentro de ningún polígono, buscamos el hoyo más cercano
+            # dentro de un radio razonable (500 metros)
+            cur.execute("""
+                SELECT 
+                    h.id,
+                    h.course_id,
+                    h.hole_number,
+                    h.par,
+                    h.length,
+                    gc.name AS course_name,
+                    ST_Distance(
+                        ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography,
+                        hp.position
+                    ) AS distance_to_flag
+                FROM hole h
+                INNER JOIN golf_course gc ON h.course_id = gc.id
+                INNER JOIN hole_point hp ON h.id = hp.hole_id
+                WHERE hp.type = 'flag'
+                  AND hp.position IS NOT NULL
+                  AND ST_Distance(
+                      ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography,
+                      hp.position
+                  ) <= 500.0  -- Radio máximo de 500 metros
+                ORDER BY distance_to_flag ASC
+                LIMIT 1;
+            """, (longitude, latitude, longitude, latitude))  # PostGIS usa (lon, lat)
+            
+            result = cur.fetchone()
             if result:
                 return dict(result)
             
@@ -640,4 +695,361 @@ class GolfRepositorySQL(GolfRepository):
                 return float(result['distance_meters'])
             
             return 0.0
+    
+    def is_ball_on_green(self, hole_id: int, latitude: float, longitude: float) -> bool:
+        """
+        Determina si la bola está en el green.
+        
+        Verifica si el punto está dentro del polígono green_polygon del hoyo usando PostGIS.
+        """
+        with Database.get_cursor(commit=False) as (conn, cur):
+            # Consulta usando PostGIS para verificar si el punto está dentro del polígono del green
+            # Nota: green_polygon es GEOGRAPHY, pero ST_Contains trabaja con GEOMETRY
+            # Hacemos cast a geometry para la comparación
+            cur.execute("""
+                SELECT 1
+                FROM hole h
+                WHERE h.id = %s
+                  AND h.green_polygon IS NOT NULL
+                  AND ST_Contains(
+                      h.green_polygon::geometry,
+                      ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geometry
+                  );
+            """, (hole_id, longitude, latitude))  # PostGIS usa (lon, lat)
+            
+            result = cur.fetchone()
+            return result is not None
+    
+    def get_all_courses(self) -> List[Dict[str, Any]]:
+        """
+        Obtiene todos los campos de golf.
+        
+        Returns:
+            Lista de diccionarios con información de los campos (id, name)
+        """
+        with Database.get_cursor(commit=False) as (conn, cur):
+            cur.execute("""
+                SELECT 
+                    id,
+                    name
+                FROM golf_course
+                ORDER BY name;
+            """)
+            
+            results = cur.fetchall()
+            return [dict(row) for row in results]
+    
+    def find_nearest_obstacle_by_type(
+        self,
+        hole_id: int,
+        obstacle_type: str,
+        latitude: float,
+        longitude: float,
+        max_distance_meters: float = 100.0
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Encuentra el obstáculo más cercano de un tipo específico cerca de una posición GPS.
+        
+        Args:
+            hole_id: ID del hoyo donde buscar
+            obstacle_type: Tipo de obstáculo (trees, bunker, water, rough_heavy, etc.)
+            latitude: Latitud GPS aproximada
+            longitude: Longitud GPS aproximada
+            max_distance_meters: Distancia máxima para buscar (por defecto 100m)
+            
+        Returns:
+            Diccionario con información del obstáculo más cercano y posición corregida
+        """
+        with Database.get_cursor(commit=False) as (conn, cur):
+            # Buscar obstáculos del tipo especificado cercanos a la posición GPS
+            # Calculamos la distancia al polígono y obtenemos el más cercano
+            cur.execute("""
+                SELECT 
+                    o.id,
+                    o.hole_id,
+                    o.type,
+                    o.name,
+                    ST_AsText(o.shape::geometry) AS shape_wkt,
+                    ST_Distance(
+                        ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography,
+                        o.shape
+                    ) AS distance_meters,
+                    ST_X(ST_Centroid(o.shape::geometry)) AS corrected_longitude,
+                    ST_Y(ST_Centroid(o.shape::geometry)) AS corrected_latitude
+                FROM obstacle o
+                WHERE o.hole_id = %s
+                  AND o.type = %s
+                  AND o.shape IS NOT NULL
+                  AND ST_Distance(
+                      ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography,
+                      o.shape
+                  ) <= %s
+                ORDER BY ST_Distance(
+                    ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography,
+                    o.shape
+                )
+                LIMIT 1;
+            """, (longitude, latitude, hole_id, obstacle_type, longitude, latitude, 
+                  max_distance_meters, longitude, latitude))  # PostGIS usa (lon, lat)
+            
+            result = cur.fetchone()
+            
+            if result:
+                return {
+                    'id': result['id'],
+                    'hole_id': result['hole_id'],
+                    'type': result['type'],
+                    'name': result['name'],
+                    'corrected_latitude': float(result['corrected_latitude']),
+                    'corrected_longitude': float(result['corrected_longitude']),
+                    'distance_meters': float(result['distance_meters']),
+                    'shape_wkt': result['shape_wkt']
+                }
+            
+            return None
+    
+    def get_hole_bbox(self, hole_id: int) -> Optional[Dict[str, float]]:
+        """
+        Obtiene el bbox (bounding box) de un hoyo como min/max lat/lng.
+        
+        Extrae los valores mínimo y máximo de latitud y longitud del polígono bbox_polygon
+        usando PostGIS ST_XMin, ST_XMax, ST_YMin, ST_YMax.
+        
+        Args:
+            hole_id: ID del hoyo
+            
+        Returns:
+            Diccionario con min_lat, max_lat, min_lng, max_lng si existe bbox,
+            None si no existe
+        """
+        with Database.get_cursor(commit=False) as (conn, cur):
+            cur.execute("""
+                SELECT 
+                    ST_YMin(bbox_polygon::geometry) AS min_lat,
+                    ST_YMax(bbox_polygon::geometry) AS max_lat,
+                    ST_XMin(bbox_polygon::geometry) AS min_lng,
+                    ST_XMax(bbox_polygon::geometry) AS max_lng
+                FROM hole
+                WHERE id = %s 
+                  AND bbox_polygon IS NOT NULL;
+            """, (hole_id,))
+            
+            result = cur.fetchone()
+            
+            if result and result['min_lat'] is not None:
+                return {
+                    'min_lat': float(result['min_lat']),
+                    'max_lat': float(result['max_lat']),
+                    'min_lng': float(result['min_lng']),
+                    'max_lng': float(result['max_lng'])
+                }
+            
+            return None
+    
+    def get_hole_geometry(self, course_id: int, hole_number: int) -> Optional[Dict[str, Any]]:
+        """
+        Obtiene toda la información geométrica de un hoyo para el endpoint de geometría.
+        
+        Incluye:
+        - bbox (bounding box)
+        - tees (tee, tee_red, tee_yellow, tee_white)
+        - green (polygon y flag)
+        - fairway (polygon)
+        - obstacles (bunker, water, trees, rough_heavy, out_of_bounds)
+        - strategic_points (fairway_center, layup_zone, approach_zone, etc.)
+        - optimal_shots (LineStrings)
+        
+        Args:
+            course_id: ID del campo de golf
+            hole_number: Número del hoyo
+            
+        Returns:
+            Diccionario con toda la geometría del hoyo en formato estructurado,
+            None si el hoyo no existe
+        """
+        with Database.get_cursor(commit=False) as (conn, cur):
+            # 1. Obtener información básica del hoyo
+            cur.execute("""
+                SELECT 
+                    h.id,
+                    h.course_id,
+                    h.hole_number,
+                    h.par,
+                    h.length
+                FROM hole h
+                WHERE h.course_id = %s AND h.hole_number = %s
+                LIMIT 1;
+            """, (course_id, hole_number))
+            
+            hole_result = cur.fetchone()
+            if not hole_result:
+                return None
+            
+            hole_id = hole_result['id']
+            
+            # 2. Obtener bbox
+            bbox = self.get_hole_bbox(hole_id)
+            
+            # 3. Obtener tees (puntos)
+            cur.execute("""
+                SELECT 
+                    type,
+                    ST_X(position::geometry) AS longitude,
+                    ST_Y(position::geometry) AS latitude
+                FROM hole_point
+                WHERE hole_id = %s 
+                  AND type IN ('tee', 'tee_red', 'tee_yellow', 'tee_white')
+                  AND position IS NOT NULL
+                ORDER BY 
+                    CASE type
+                        WHEN 'tee_white' THEN 1
+                        WHEN 'tee_yellow' THEN 2
+                        WHEN 'tee_red' THEN 3
+                        WHEN 'tee' THEN 4
+                    END;
+            """, (hole_id,))
+            
+            tees = []
+            for row in cur.fetchall():
+                tee_type = row['type']
+                # Normalizar nombres: tee_red -> red, tee_yellow -> yellow, tee_white -> white, tee -> red (default)
+                if tee_type == 'tee_red' or tee_type == 'tee':
+                    normalized_type = 'red'
+                elif tee_type == 'tee_yellow':
+                    normalized_type = 'yellow'
+                elif tee_type == 'tee_white':
+                    normalized_type = 'white'
+                else:
+                    normalized_type = 'red'
+                
+                tees.append({
+                    'type': normalized_type,
+                    'latitude': float(row['latitude']),
+                    'longitude': float(row['longitude'])
+                })
+            
+            # 4. Obtener flag (punto)
+            cur.execute("""
+                SELECT 
+                    ST_X(position::geometry) AS longitude,
+                    ST_Y(position::geometry) AS latitude
+                FROM hole_point
+                WHERE hole_id = %s AND type = 'flag'
+                LIMIT 1;
+            """, (hole_id,))
+            
+            flag_result = cur.fetchone()
+            flag = None
+            if flag_result:
+                flag = {
+                    'latitude': float(flag_result['latitude']),
+                    'longitude': float(flag_result['longitude'])
+                }
+            
+            # 5. Obtener green polygon
+            cur.execute("""
+                SELECT 
+                    ST_AsGeoJSON(green_polygon::geometry)::json AS polygon_geojson
+                FROM hole
+                WHERE id = %s AND green_polygon IS NOT NULL;
+            """, (hole_id,))
+            
+            green_result = cur.fetchone()
+            green_polygon = None
+            if green_result and green_result['polygon_geojson']:
+                green_polygon = green_result['polygon_geojson']
+            
+            # 6. Obtener fairway polygon
+            cur.execute("""
+                SELECT 
+                    ST_AsGeoJSON(fairway_polygon::geometry)::json AS polygon_geojson
+                FROM hole
+                WHERE id = %s AND fairway_polygon IS NOT NULL;
+            """, (hole_id,))
+            
+            fairway_result = cur.fetchone()
+            fairway_polygon = None
+            if fairway_result and fairway_result['polygon_geojson']:
+                fairway_polygon = fairway_result['polygon_geojson']
+            
+            # 7. Obtener obstacles
+            cur.execute("""
+                SELECT 
+                    id,
+                    type,
+                    name,
+                    ST_AsGeoJSON(shape::geometry)::json AS polygon_geojson
+                FROM obstacle
+                WHERE hole_id = %s AND shape IS NOT NULL
+                ORDER BY type, id;
+            """, (hole_id,))
+            
+            obstacles = []
+            for row in cur.fetchall():
+                obstacles.append({
+                    'id': row['id'],
+                    'type': row['type'],
+                    'name': row['name'],
+                    'polygon': row['polygon_geojson']
+                })
+            
+            # 8. Obtener strategic_points
+            strategic_points = self.get_strategic_points(hole_id)
+            # Convertir a formato GeoJSON Point
+            strategic_points_formatted = []
+            for sp in strategic_points:
+                strategic_points_formatted.append({
+                    'id': sp['id'],
+                    'type': sp['type'],
+                    'name': sp['name'],
+                    'description': sp.get('description'),
+                    'distance_to_flag': sp.get('distance_to_flag'),
+                    'priority': sp.get('priority'),
+                    'point': {
+                        'type': 'Point',
+                        'coordinates': [sp['longitude'], sp['latitude']]
+                    }
+                })
+            
+            # 9. Obtener optimal_shots
+            optimal_shots_raw = self.get_all_optimal_shots(hole_id)
+            optimal_shots = []
+            for shot in optimal_shots_raw:
+                # Convertir WKT LineString a GeoJSON
+                cur.execute("""
+                    SELECT ST_AsGeoJSON(path::geometry)::json AS linestring_geojson
+                    FROM optimal_shot
+                    WHERE id = %s;
+                """, (shot['id'],))
+                
+                shot_geom = cur.fetchone()
+                if shot_geom and shot_geom['linestring_geojson']:
+                    optimal_shots.append({
+                        'id': shot['id'],
+                        'description': shot['description'],
+                        'linestring': shot_geom['linestring_geojson']
+                    })
+            
+            # Construir respuesta
+            result = {
+                'hole_id': hole_id,
+                'course_id': course_id,
+                'hole_number': hole_number,
+                'par': hole_result['par'],
+                'length': hole_result['length'],
+                'bbox': bbox,
+                'tees': tees,
+                'green': {
+                    'flag': flag,
+                    'polygon': green_polygon
+                },
+                'fairway': {
+                    'polygon': fairway_polygon
+                },
+                'obstacles': obstacles,
+                'strategic_points': strategic_points_formatted,
+                'optimal_shots': optimal_shots
+            }
+            
+            return result
 

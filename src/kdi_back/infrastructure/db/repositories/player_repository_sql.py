@@ -347,4 +347,97 @@ class PlayerRepositorySQL(PlayerRepository):
                 
         except psycopg2.Error as e:
             raise ValueError(f"Error al obtener estadísticas de palos: {e}")
+    
+    def update_club_statistics_after_stroke(self, player_profile_id: int, club_id: int,
+                                           actual_distance: float, target_distance: float,
+                                           quality_score: float) -> None:
+        """
+        Actualiza las estadísticas de un palo después de evaluar un golpe.
+        
+        Usa media móvil ponderada para actualizar:
+        - average_distance_meters
+        - average_error_meters
+        - shots_recorded
+        """
+        try:
+            with Database.get_cursor(commit=True) as (conn, cur):
+                # Obtener estadísticas actuales
+                cur.execute("""
+                    SELECT 
+                        average_distance_meters,
+                        average_error_meters,
+                        shots_recorded,
+                        min_distance_meters,
+                        max_distance_meters,
+                        error_std_deviation
+                    FROM player_club_statistics
+                    WHERE player_profile_id = %s AND golf_club_id = %s;
+                """, (player_profile_id, club_id))
+                
+                result = cur.fetchone()
+                
+                if not result:
+                    # Si no existe, crear estadísticas iniciales
+                    cur.execute("""
+                        INSERT INTO player_club_statistics (
+                            player_profile_id, golf_club_id,
+                            average_distance_meters, min_distance_meters, max_distance_meters,
+                            average_error_meters, error_std_deviation, shots_recorded
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, 1);
+                    """, (
+                        player_profile_id, club_id,
+                        actual_distance, actual_distance, actual_distance,
+                        abs(actual_distance - target_distance), abs(actual_distance - target_distance) * 0.5
+                    ))
+                    return
+                
+                # Calcular nuevas estadísticas usando media móvil ponderada
+                current_avg_distance = float(result['average_distance_meters'])
+                current_avg_error = float(result['average_error_meters'])
+                shots_recorded = int(result['shots_recorded'])
+                
+                # Factor de peso: más peso a los últimos golpes (usamos 0.3 como factor de aprendizaje)
+                learning_rate = 0.3
+                
+                # Actualizar distancia promedio
+                new_avg_distance = current_avg_distance * (1 - learning_rate) + actual_distance * learning_rate
+                
+                # Calcular error actual
+                current_error = abs(actual_distance - target_distance)
+                
+                # Actualizar error promedio
+                new_avg_error = current_avg_error * (1 - learning_rate) + current_error * learning_rate
+                
+                # Actualizar min/max distancia
+                current_min = float(result['min_distance_meters']) if result['min_distance_meters'] else actual_distance
+                current_max = float(result['max_distance_meters']) if result['max_distance_meters'] else actual_distance
+                new_min = min(current_min, actual_distance)
+                new_max = max(current_max, actual_distance)
+                
+                # Actualizar desviación estándar (simplificado: 50% del error promedio)
+                new_std_dev = new_avg_error * 0.5
+                
+                # Incrementar contador de golpes
+                new_shots_recorded = shots_recorded + 1
+                
+                # Actualizar en la base de datos
+                cur.execute("""
+                    UPDATE player_club_statistics
+                    SET average_distance_meters = %s,
+                        min_distance_meters = %s,
+                        max_distance_meters = %s,
+                        average_error_meters = %s,
+                        error_std_deviation = %s,
+                        shots_recorded = %s,
+                        last_updated = CURRENT_TIMESTAMP
+                    WHERE player_profile_id = %s AND golf_club_id = %s;
+                """, (
+                    new_avg_distance, new_min, new_max,
+                    new_avg_error, new_std_dev, new_shots_recorded,
+                    player_profile_id, club_id
+                ))
+                
+        except psycopg2.Error as e:
+            raise ValueError(f"Error al actualizar estadísticas de palo: {e}")
 

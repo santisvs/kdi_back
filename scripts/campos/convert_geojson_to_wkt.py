@@ -81,6 +81,7 @@ def convert_geojson_to_wkt_format(input_file: Path, output_file: Path) -> Dict[s
         "length": None,
         "fairway_polygon_wkt": None,
         "green_polygon_wkt": None,
+        "bbox_polygon_wkt": None,
         "points": [],
         "obstacles": [],
         "optimal_shots": [],
@@ -95,7 +96,8 @@ def convert_geojson_to_wkt_format(input_file: Path, output_file: Path) -> Dict[s
         coords = geometry.get('coordinates', [])
         
         feature_type = props.get('type', '')
-        hole_num = props.get('hole_number')
+        # Buscar hole_number (puede estar escrito como hole_number o hole_numer por typos)
+        hole_num = props.get('hole_number') or props.get('hole_numer')
         
         # Ubicación del campo
         if feature_type == 'course_location':
@@ -128,6 +130,13 @@ def convert_geojson_to_wkt_format(input_file: Path, output_file: Path) -> Dict[s
                 hole['green_polygon_wkt'] = polygon_to_wkt_from_geojson(coords)
             except Exception as e:
                 print(f"⚠️  Error procesando green del hoyo {hole_num}: {e}")
+        
+        # Bbox
+        elif feature_type == 'bbox' and geom_type == 'Polygon':
+            try:
+                hole['bbox_polygon_wkt'] = polygon_to_wkt_from_geojson(coords)
+            except Exception as e:
+                print(f"⚠️  Error procesando bbox del hoyo {hole_num}: {e}")
         
         # Puntos (tee, flag, etc.)
         elif geom_type == 'Point' and feature_type in ['tee', 'flag', 'tee_white', 'tee_yellow']:
@@ -200,6 +209,8 @@ def convert_geojson_to_wkt_format(input_file: Path, output_file: Path) -> Dict[s
             hole['fairway_polygon_wkt'] = data['fairway_polygon_wkt']
         if data['green_polygon_wkt']:
             hole['green_polygon_wkt'] = data['green_polygon_wkt']
+        if data['bbox_polygon_wkt']:
+            hole['bbox_polygon_wkt'] = data['bbox_polygon_wkt']
         if data['points']:
             hole['points'] = data['points']
         if data['obstacles']:

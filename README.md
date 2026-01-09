@@ -344,3 +344,23 @@ https://fedgolfmadrid.com/club/CM22
 Diseño
 https://chatgpt.com/c/693ab5ed-df04-8325-bde8-de459d690a15
 https://geojson.io/#new&map=18.09/40.444619/-3.871407
+
+
+KDI_BACK (LOCAL)
+.\.venv\Scripts\activate
+python .\scripts\run_dev.py
+-- Si quiero desplegar en local apuntando a la BBDD de PRE, hay que modificar el fichero .env
+
+-- DEsplegar en PRE
+eb deploy
+eb status
+eb logs
+eb setenv
+
+KDI_FRONT
+.\ejecutar_con_entorno.ps1 -e LOCAL -d USD6XGXKQSSKCI89
+.\ejecutar_con_entorno.ps1 -e PRE -d USD6XGXKQSSKCI89
+
+.\instalar_app.ps1 -e LOCAL
+.\instalar_app.ps1 -e PRE
+
