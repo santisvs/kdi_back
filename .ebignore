@@ -1,0 +1,56 @@
+# Archivos y directorios a ignorar en el despliegue de Elastic Beanstalk
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+
+# Archivos de entorno local
+.env
+.env.local
+
+# Tests
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Documentación
+*.md
+!README.md
+
+# Scripts de desarrollo
+scripts/run_dev.py
+
+# Datos locales (opcional - incluir si necesitas los datos en producción)
+# data/campos_info/
+# data/campos/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+

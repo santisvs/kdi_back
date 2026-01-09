@@ -8,6 +8,36 @@ from kdi_back.api.dependencies import get_golf_service, get_player_service
 golf_bp = Blueprint('golf', __name__)
 
 
+@golf_bp.route('/golf/courses', methods=['GET'])
+def get_all_courses():
+    """
+    Endpoint para obtener todos los campos de golf.
+    
+    Respuesta exitosa (200):
+    [
+        {
+            "id": 1,
+            "name": "Las Rejas Club de Golf"
+        },
+        {
+            "id": 2,
+            "name": "Club de Campo Villa de Madrid"
+        }
+    ]
+    """
+    try:
+        golf_service = get_golf_service()
+        courses = golf_service.get_all_courses()
+        
+        return jsonify(courses), 200
+        
+    except Exception as e:
+        return jsonify({
+            "error": "Error al obtener los campos de golf",
+            "details": str(e)
+        }), 500
+
+
 def _get_hole_id_from_request(data, golf_service, latitude=None, longitude=None):
     """
     Helper function para obtener hole_id desde course_id/hole_number o identificarlo desde coordenadas.
@@ -643,8 +673,10 @@ def next_shot():
     - hole_number: Número del hoyo (opcional, debe ir con course_id)
     - user_id: ID del usuario/jugador (opcional, si se proporciona usa el perfil del jugador)
     - ball_situation_description: Descripción opcional de la situación de la bola y lo que ve el jugador (string)
+    - match_id: ID del partido (opcional, solo para contexto, no registra golpes)
     
     Nota: course_id y hole_number deben proporcionarse juntos. Si no se proporcionan, se identifican automáticamente desde las coordenadas.
+    Nota: Este endpoint solo proporciona recomendaciones. Para registrar golpes en un partido, usa el endpoint POST /match/<match_id>/score
     
     Ejemplo POST (sin perfil de jugador):
     {
@@ -672,6 +704,19 @@ def next_shot():
         "user_id": 1,
         "ball_situation_description": "La bola está en una posición elevada, puedo ver el green claramente. Hay viento en contra moderado."
     }
+    
+    Ejemplo POST (con contexto de partido, solo para información):
+    {
+        "latitude": 40.44445,
+        "longitude": -3.87095,
+        "course_id": 1,
+        "hole_number": 1,
+        "user_id": 1,
+        "match_id": 1
+    }
+    
+    Nota: Para registrar golpes en un partido después de ejecutar el golpe, usa el endpoint:
+    POST /match/<match_id>/score con {"user_id": 1, "hole_id": 5, "strokes": 4}
     
     Respuesta:
     {
@@ -740,18 +785,127 @@ def next_shot():
             if not ball_situation_description:
                 ball_situation_description = None
         
+        # match_id es opcional (solo para contexto, no para registrar golpes)
+        match_id = None
+        if 'match_id' in data:
+            try:
+                match_id = int(data['match_id'])
+            except (ValueError, TypeError):
+                return jsonify({"error": "El campo 'match_id' debe ser un número entero válido"}), 400
+        
         # Usar el servicio de dominio para obtener toda la información
         golf_service = get_golf_service()
         
-        # 1. Obtener información del hoyo (por course_id/hole_number o identificando desde coordenadas)
-        hole_id, hole_info, course_id, hole_number = _get_hole_id_from_request(
-            data, golf_service, latitude, longitude
-        )
+        # 1. Si se proporciona match_id, intentar obtener el estado persistido del partido
+        match_id = None
+        match_state = None
+        if 'match_id' in data and user_id:
+            try:
+                match_id = int(data['match_id'])
+                from kdi_back.api.dependencies import get_match_service
+                match_service = get_match_service()
+                match_state = match_service.get_match_state(match_id, user_id)
+                
+                if match_state:
+                    # Usar el estado persistido del partido
+                    course_id = match_state['course_id']
+                    hole_number = match_state['current_hole_number']
+                    hole_id = match_state['current_hole_id']
+                    
+                    # Obtener información completa del hoyo
+                    hole_info = golf_service.get_hole_by_course_and_number(course_id, hole_number)
+                    
+                    if not hole_info:
+                        return jsonify({
+                            "error": f"No se encontró el hoyo {hole_number} en el campo {course_id}"
+                        }), 404
+                    
+                    # Si hole_id no está en el estado, obtenerlo
+                    if not hole_id:
+                        hole_id = hole_info['id']
+            except (ValueError, TypeError) as e:
+                # Si hay error obteniendo el estado, continuar con la lógica normal
+                print(f"Advertencia: No se pudo obtener el estado del partido: {e}")
+            except Exception as e:
+                # Si hay error, continuar con la lógica normal
+                print(f"Advertencia: Error al obtener el estado del partido: {e}")
         
-        if hole_id is None or hole_info is None:
-            return jsonify({
-                "error": "No se pudo identificar el hoyo. Proporciona 'course_id' y 'hole_number' o asegúrate de que las coordenadas estén dentro de un hoyo."
-            }), 404
+        # 2. Si no se obtuvo el estado del partido, usar la lógica normal
+        if not match_state:
+            # Obtener información del hoyo (por course_id/hole_number o identificando desde coordenadas)
+            hole_id, hole_info, course_id, hole_number = _get_hole_id_from_request(
+                data, golf_service, latitude, longitude
+            )
+            
+            if hole_id is None or hole_info is None:
+                return jsonify({
+                    "error": "No se pudo identificar el hoyo. Proporciona 'course_id' y 'hole_number' o asegúrate de que las coordenadas estén dentro de un hoyo."
+                }), 404
+        
+        # 1.5. Evaluar golpe anterior si existe (solo si se proporciona user_id y match_id)
+        stroke_evaluation = None
+        if user_id and match_id:
+            try:
+                match_id = int(data['match_id'])
+                from kdi_back.api.dependencies import get_match_service
+                match_service = get_match_service()
+                
+                # Detectar si la nueva posición está en el green
+                is_on_green = golf_service.is_ball_on_green(latitude, longitude, hole_id)
+                
+                # Obtener número actual de golpes para validación
+                current_strokes = match_service.match_repository.get_hole_strokes_for_player(
+                    match_id, user_id, hole_id
+                )
+                
+                # Evaluar el último golpe no evaluado
+                stroke_evaluation = match_service.evaluate_stroke(
+                    match_id=match_id,
+                    user_id=user_id,
+                    course_id=course_id if course_id else hole_info['course_id'],
+                    hole_number=hole_number if hole_number else hole_info['hole_number'],
+                    ball_end_latitude=latitude,
+                    ball_end_longitude=longitude,
+                    is_on_green=is_on_green,
+                    current_strokes=current_strokes
+                )
+                
+                # Si se evaluó un golpe y tiene información del palo, actualizar estadísticas
+                # NO actualizar si el golpe fue en el green (evaluation_quality es None)
+                if stroke_evaluation and stroke_evaluation.get('club_used_id') and stroke_evaluation.get('evaluation_quality') is not None:
+                    try:
+                        from kdi_back.api.dependencies import get_player_service
+                        player_service = get_player_service()
+                        player_profile = player_service.player_repository.get_player_profile_by_user_id(user_id)
+                        
+                        if player_profile:
+                            # Obtener distancia objetivo (propuesta o calculada)
+                            target_distance = stroke_evaluation.get('proposed_distance_meters')
+                            if not target_distance:
+                                # Calcular distancia desde inicio hasta final
+                                actual_distance = stroke_evaluation.get('ball_end_distance_meters', 0)
+                                target_distance = actual_distance  # Usar la real como referencia
+                            
+                            actual_distance = stroke_evaluation.get('ball_end_distance_meters', 0)
+                            quality_score = stroke_evaluation.get('evaluation_quality', 0)
+                            
+                            # Actualizar estadísticas del palo
+                            player_service.player_repository.update_club_statistics_after_stroke(
+                                player_profile_id=player_profile['id'],
+                                club_id=stroke_evaluation['club_used_id'],
+                                actual_distance=actual_distance,
+                                target_distance=target_distance,
+                                quality_score=quality_score
+                            )
+                    except Exception as e:
+                        # Si hay error actualizando estadísticas, no fallar el endpoint
+                        print(f"Advertencia: No se pudo actualizar estadísticas del palo: {e}")
+            except (ValueError, TypeError) as e:
+                # Si hay error evaluando el golpe, continuar sin evaluación
+                print(f"Advertencia: No se pudo evaluar el golpe anterior: {e}")
+            except Exception as e:
+                # Si hay error, continuar sin evaluación
+                print(f"Advertencia: Error al evaluar golpe anterior: {e}")
         
         # 2. Obtener estadísticas del jugador si se proporcionó user_id (necesarias para evaluar trayectorias)
         player_club_statistics = None
@@ -851,6 +1005,16 @@ def next_shot():
             }
         }
         
+        # Agregar información de evaluación de golpe anterior si existe
+        if stroke_evaluation:
+            response["previous_stroke_evaluation"] = {
+                "stroke_id": stroke_evaluation.get('id'),
+                "evaluation_quality": stroke_evaluation.get('evaluation_quality'),
+                "evaluation_distance_error": stroke_evaluation.get('evaluation_distance_error'),
+                "evaluation_direction_error": stroke_evaluation.get('evaluation_direction_error'),
+                "ball_end_distance_meters": stroke_evaluation.get('ball_end_distance_meters')
+            }
+        
         # Agregar estadísticas del jugador si se usaron
         if player_club_statistics:
             response["analysis"]["player_club_statistics"] = [
@@ -861,6 +1025,11 @@ def next_shot():
                 }
                 for stat in player_club_statistics
             ]
+        
+        # Añadir información del partido si se proporcionó (solo para contexto)
+        if match_id:
+            response["analysis"]["match_id"] = match_id
+            response["analysis"]["note"] = "Para registrar golpes en este partido, usa POST /match/{}/score".format(match_id)
         
         return jsonify(response), 200
         
@@ -895,8 +1064,10 @@ def trajectory_options():
     - course_id: ID del campo de golf (opcional, se identifica automáticamente desde las coordenadas si no se proporciona)
     - hole_number: Número del hoyo (1, 2, 3, etc.) (opcional, se identifica automáticamente desde las coordenadas si no se proporciona)
     - user_id: ID del usuario/jugador (opcional, si se proporciona usa el perfil del jugador)
+    - match_id: ID del partido (opcional, si se proporciona junto con user_id, usa el estado persistido del partido)
     
     Nota: course_id y hole_number deben proporcionarse juntos. Si no se proporcionan, se identifican automáticamente desde las coordenadas.
+    Nota: Si se proporciona match_id y user_id, se usa el estado persistido del partido (current_hole_number) en lugar de identificar desde coordenadas.
     
     Ejemplo POST (sin course_id/hole_number - se identifica automáticamente):
     {
@@ -1048,31 +1219,67 @@ def trajectory_options():
         # Usar el servicio de dominio para obtener información
         golf_service = get_golf_service()
         
-        # 1. Obtener información del hoyo (por course_id/hole_number o identificando desde coordenadas)
-        if course_id and hole_number:
-            # Si se proporcionaron course_id y hole_number, usarlos directamente
-            hole_info = golf_service.get_hole_by_course_and_number(course_id, hole_number)
-            if not hole_info:
-                return jsonify({
-                    "error": f"No se encontró el hoyo número {hole_number} en el campo {course_id}"
-                }), 404
-            hole_id = hole_info['id']
-        else:
-            # Si no se proporcionaron, identificarlo desde las coordenadas
-            hole_info = golf_service.identify_hole_by_ball_position(latitude, longitude)
-            if not hole_info:
-                return jsonify({
-                    "error": "No se pudo identificar el hoyo desde las coordenadas proporcionadas. Por favor, proporciona los campos 'course_id' y 'hole_number'."
-                }), 404
-            hole_id = hole_info['id']
-            course_id = hole_info['course_id']
-            hole_number = hole_info['hole_number']
+        # 1. Si se proporciona match_id, intentar obtener el estado persistido del partido
+        match_id = None
+        match_state = None
+        if 'match_id' in data and user_id:
+            try:
+                match_id = int(data['match_id'])
+                from kdi_back.api.dependencies import get_match_service
+                match_service = get_match_service()
+                match_state = match_service.get_match_state(match_id, user_id)
+                
+                if match_state:
+                    # Usar el estado persistido del partido
+                    course_id = match_state['course_id']
+                    hole_number = match_state['current_hole_number']
+                    hole_id = match_state['current_hole_id']
+                    
+                    # Obtener información completa del hoyo
+                    hole_info = golf_service.get_hole_by_course_and_number(course_id, hole_number)
+                    
+                    if not hole_info:
+                        return jsonify({
+                            "error": f"No se encontró el hoyo {hole_number} en el campo {course_id}"
+                        }), 404
+                    
+                    # Si hole_id no está en el estado, obtenerlo
+                    if not hole_id:
+                        hole_id = hole_info['id']
+            except (ValueError, TypeError) as e:
+                # Si hay error obteniendo el estado, continuar con la lógica normal
+                print(f"Advertencia: No se pudo obtener el estado del partido: {e}")
+            except Exception as e:
+                # Si hay error, continuar con la lógica normal
+                print(f"Advertencia: Error al obtener el estado del partido: {e}")
         
-        # 2. Determinar tipo de terreno donde está la bola
+        # 2. Si no se obtuvo el estado del partido, usar la lógica normal
+        if not match_state:
+            # Obtener información del hoyo (por course_id/hole_number o identificando desde coordenadas)
+            if course_id and hole_number:
+                # Si se proporcionaron course_id y hole_number, usarlos directamente
+                hole_info = golf_service.get_hole_by_course_and_number(course_id, hole_number)
+                if not hole_info:
+                    return jsonify({
+                        "error": f"No se encontró el hoyo número {hole_number} en el campo {course_id}"
+                    }), 404
+                hole_id = hole_info['id']
+            else:
+                # Si no se proporcionaron, identificarlo desde las coordenadas
+                hole_info = golf_service.identify_hole_by_ball_position(latitude, longitude)
+                if not hole_info:
+                    return jsonify({
+                        "error": "No se pudo identificar el hoyo desde las coordenadas proporcionadas. Por favor, proporciona los campos 'course_id' y 'hole_number'."
+                    }), 404
+                hole_id = hole_info['id']
+                course_id = hole_info['course_id']
+                hole_number = hole_info['hole_number']
+        
+        # 3. Determinar tipo de terreno donde está la bola
         terrain_result = golf_service.determine_terrain_type(latitude, longitude, hole_id)
         terrain_type = terrain_result['terrain_type']
         
-        # 3. Verificar que el hoyo tenga bandera antes de evaluar trayectorias
+        # 4. Verificar que el hoyo tenga bandera antes de evaluar trayectorias
         # (esto es necesario para calcular la trayectoria directa)
         flag_check = golf_service.golf_repository.calculate_distance_to_hole(hole_id, latitude, longitude)
         if flag_check is None:
@@ -1235,7 +1442,7 @@ def trajectory_options_evol():
     
     Nota: course_id y hole_number deben proporcionarse juntos. Si no se proporcionan, se identifican automáticamente desde las coordenadas.
     
-    Ejemplo POST:
+    Ejemplo POST (con course_id y hole_number):
     {
         "latitude": 40.44445,
         "longitude": -3.87095,
@@ -1243,6 +1450,15 @@ def trajectory_options_evol():
         "hole_number": 1,
         "user_id": 1
     }
+    
+    Ejemplo POST (con estado persistido del partido):
+    {
+        "latitude": 40.44445,
+        "longitude": -3.87095,
+        "match_id": 1,
+        "user_id": 1
+    }
+    Nota: Si se proporciona match_id y user_id, se usa el current_hole_number del estado persistido.
     
     Respuesta:
     {
@@ -1312,31 +1528,67 @@ def trajectory_options_evol():
         # Usar el servicio de dominio para obtener información
         golf_service = get_golf_service()
         
-        # 1. Obtener información del hoyo (por course_id/hole_number o identificando desde coordenadas)
-        if course_id and hole_number:
-            # Si se proporcionaron course_id y hole_number, usarlos directamente
-            hole_info = golf_service.get_hole_by_course_and_number(course_id, hole_number)
-            if not hole_info:
-                return jsonify({
-                    "error": f"No se encontró el hoyo número {hole_number} en el campo {course_id}"
-                }), 404
-            hole_id = hole_info['id']
-        else:
-            # Si no se proporcionaron, identificarlo desde las coordenadas
-            hole_info = golf_service.identify_hole_by_ball_position(latitude, longitude)
-            if not hole_info:
-                return jsonify({
-                    "error": "No se pudo identificar el hoyo desde las coordenadas proporcionadas. Por favor, proporciona los campos 'course_id' y 'hole_number'."
-                }), 404
-            hole_id = hole_info['id']
-            course_id = hole_info['course_id']
-            hole_number = hole_info['hole_number']
+        # 1. Si se proporciona match_id, intentar obtener el estado persistido del partido
+        match_id = None
+        match_state = None
+        if 'match_id' in data and user_id:
+            try:
+                match_id = int(data['match_id'])
+                from kdi_back.api.dependencies import get_match_service
+                match_service = get_match_service()
+                match_state = match_service.get_match_state(match_id, user_id)
+                
+                if match_state:
+                    # Usar el estado persistido del partido
+                    course_id = match_state['course_id']
+                    hole_number = match_state['current_hole_number']
+                    hole_id = match_state['current_hole_id']
+                    
+                    # Obtener información completa del hoyo
+                    hole_info = golf_service.get_hole_by_course_and_number(course_id, hole_number)
+                    
+                    if not hole_info:
+                        return jsonify({
+                            "error": f"No se encontró el hoyo {hole_number} en el campo {course_id}"
+                        }), 404
+                    
+                    # Si hole_id no está en el estado, obtenerlo
+                    if not hole_id:
+                        hole_id = hole_info['id']
+            except (ValueError, TypeError) as e:
+                # Si hay error obteniendo el estado, continuar con la lógica normal
+                print(f"Advertencia: No se pudo obtener el estado del partido: {e}")
+            except Exception as e:
+                # Si hay error, continuar con la lógica normal
+                print(f"Advertencia: Error al obtener el estado del partido: {e}")
         
-        # 2. Determinar tipo de terreno donde está la bola
+        # 2. Si no se obtuvo el estado del partido, usar la lógica normal
+        if not match_state:
+            # Obtener información del hoyo (por course_id/hole_number o identificando desde coordenadas)
+            if course_id and hole_number:
+                # Si se proporcionaron course_id y hole_number, usarlos directamente
+                hole_info = golf_service.get_hole_by_course_and_number(course_id, hole_number)
+                if not hole_info:
+                    return jsonify({
+                        "error": f"No se encontró el hoyo número {hole_number} en el campo {course_id}"
+                    }), 404
+                hole_id = hole_info['id']
+            else:
+                # Si no se proporcionaron, identificarlo desde las coordenadas
+                hole_info = golf_service.identify_hole_by_ball_position(latitude, longitude)
+                if not hole_info:
+                    return jsonify({
+                        "error": "No se pudo identificar el hoyo desde las coordenadas proporcionadas. Por favor, proporciona los campos 'course_id' y 'hole_number'."
+                    }), 404
+                hole_id = hole_info['id']
+                course_id = hole_info['course_id']
+                hole_number = hole_info['hole_number']
+        
+        # 3. Determinar tipo de terreno donde está la bola
         terrain_result = golf_service.determine_terrain_type(latitude, longitude, hole_id)
         terrain_type = terrain_result['terrain_type']
         
-        # 3. Verificar que el hoyo tenga bandera antes de evaluar trayectorias
+        # 4. Verificar que el hoyo tenga bandera antes de evaluar trayectorias
         flag_check = golf_service.golf_repository.calculate_distance_to_hole(hole_id, latitude, longitude)
         if flag_check is None:
             return jsonify({
@@ -1346,7 +1598,7 @@ def trajectory_options_evol():
                 "hole_number": hole_number
             }), 400
         
-        # 4. Obtener estadísticas del jugador si se proporcionó user_id
+        # 5. Obtener estadísticas del jugador si se proporcionó user_id
         player_club_statistics = None
         player_info = {
             'user_id': user_id,
@@ -1413,6 +1665,132 @@ def trajectory_options_evol():
     except Exception as e:
         return jsonify({
             "error": "Error al calcular opciones de trayectorias evolutivas",
+            "details": str(e)
+        }), 500
+
+
+@golf_bp.route('/golf/courses/<int:course_id>/holes/<int:hole_number>/geometry', methods=['GET'])
+def get_hole_geometry(course_id: int, hole_number: int):
+    """
+    Endpoint para obtener toda la información geométrica de un hoyo.
+    
+    Este endpoint devuelve:
+    - bbox: Bounding box del hoyo (min_lat, max_lat, min_lng, max_lng)
+    - tees: Lista de tees (red, yellow, white) con sus coordenadas
+    - green: Polígono del green y posición de la bandera
+    - fairway: Polígono del fairway
+    - obstacles: Lista de obstáculos (bunker, water, trees, etc.) con sus polígonos
+    - strategic_points: Puntos estratégicos (fairway_center, layup_zone, approach_zone, etc.)
+    - optimal_shots: Trayectorias de golpes óptimos (LineStrings)
+    
+    Ejemplo GET:
+    GET /golf/courses/1/holes/3/geometry
+    
+    Respuesta exitosa (200):
+    {
+        "hole_id": 3,
+        "course_id": 1,
+        "hole_number": 3,
+        "par": 3,
+        "length": 125,
+        "bbox": {
+            "min_lat": 40.44500623047213,
+            "max_lat": 40.44616362999491,
+            "min_lng": -3.8704387687839414,
+            "max_lng": -3.8687416850312673
+        },
+        "tees": [
+            {
+                "type": "red",
+                "latitude": 40.44516037911035,
+                "longitude": -3.8690143464118023
+            },
+            {
+                "type": "yellow",
+                "latitude": 40.44510334601975,
+                "longitude": -3.8689014157384634
+            },
+            {
+                "type": "white",
+                "latitude": 40.4450414447393,
+                "longitude": -3.8687875411267783
+            }
+        ],
+        "green": {
+            "flag": {
+                "latitude": 40.44577043529273,
+                "longitude": -3.8701091711673996
+            },
+            "polygon": {
+                "type": "Polygon",
+                "coordinates": [[...]]
+            }
+        },
+        "fairway": {
+            "polygon": {
+                "type": "Polygon",
+                "coordinates": [[...]]
+            }
+        },
+        "obstacles": [
+            {
+                "id": 10,
+                "type": "water",
+                "name": "Agua izquierdo 3_1",
+                "polygon": {
+                    "type": "Polygon",
+                    "coordinates": [[...]]
+                }
+            }
+        ],
+        "strategic_points": [
+            {
+                "id": 1,
+                "type": "fairway_center_far",
+                "name": "Centro calle antes de bunkers",
+                "distance_to_flag": 170,
+                "priority": 3,
+                "point": {
+                    "type": "Point",
+                    "coordinates": [-3.870535123398099, 40.44438705110176]
+                }
+            }
+        ],
+        "optimal_shots": [
+            {
+                "id": 1,
+                "description": "Salida directa a green",
+                "linestring": {
+                    "type": "LineString",
+                    "coordinates": [[-3.8689028167818833, 40.445100433681716], [-3.8700299425288733, 40.44572027064743]]
+                }
+            }
+        ]
+    }
+    
+    Respuesta si el hoyo no existe (404):
+    {
+        "error": "Hoyo no encontrado",
+        "course_id": 1,
+        "hole_number": 3
+    }
+    """
+    try:
+        golf_service = get_golf_service()
+        geometry = golf_service.golf_repository.get_hole_geometry(course_id, hole_number)
+        
+        if not geometry:
+            return jsonify({
+                "error": "Hoyo no encontrado",
+                "course_id": course_id,
+                "hole_number": hole_number
+            }), 404
+        
+        return jsonify(geometry), 200
+        
+    except Exception as e:
+        return jsonify({
+            "error": "Error al obtener la geometría del hoyo",
             "details": str(e)
         }), 500
 

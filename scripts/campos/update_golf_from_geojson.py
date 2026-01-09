@@ -76,13 +76,18 @@ except ImportError as e:
     sys.exit(1)
 
 
-def main():
+def main(geojson_file_path=None):
     print("=" * 80)
     print(" 🏌️  ACTUALIZAR CAMPO DE GOLF DESDE GEOJSON")
     print("=" * 80)
     
     # Obtener archivo GeoJSON de entrada
-    if len(sys.argv) > 1:
+    if geojson_file_path:
+        geojson_file = Path(geojson_file_path)
+        # Si la ruta es relativa y no existe, intentar desde la raíz del proyecto
+        if not geojson_file.is_absolute() and not geojson_file.exists():
+            geojson_file = project_root / geojson_file
+    elif len(sys.argv) > 1:
         geojson_file = Path(sys.argv[1])
         # Si la ruta es relativa y no existe, intentar desde la raíz del proyecto
         if not geojson_file.is_absolute() and not geojson_file.exists():

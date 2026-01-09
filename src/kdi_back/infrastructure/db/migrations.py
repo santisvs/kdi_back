@@ -141,7 +141,8 @@ def create_hole_table(drop_if_exists=False):
                     par INT,
                     length INT,
                     fairway_polygon GEOGRAPHY(Polygon, 4326),
-                    green_polygon GEOGRAPHY(Polygon, 4326)
+                    green_polygon GEOGRAPHY(Polygon, 4326),
+                    bbox_polygon GEOGRAPHY(Polygon, 4326)
                 );
             """)
 
@@ -153,6 +154,10 @@ def create_hole_table(drop_if_exists=False):
             cur.execute("""
                 CREATE INDEX idx_hole_green_polygon 
                 ON hole USING GIST(green_polygon);
+            """)
+            cur.execute("""
+                CREATE INDEX idx_hole_bbox_polygon 
+                ON hole USING GIST(bbox_polygon);
             """)
 
             print("✓ Tabla 'hole' creada exitosamente")

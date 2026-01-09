@@ -86,26 +86,41 @@ class PlayerService:
         if years_playing is not None:
             self._validate_years_playing(years_playing)
         
-        # Verificar que el usuario no exista
+        # Verificar si el usuario ya existe
         existing_user = self.player_repository.get_user_by_email(email)
+        
         if existing_user:
-            raise ValueError(f"Ya existe un usuario con el email: {email}")
+            # El usuario ya existe, verificar si tiene perfil
+            user = existing_user
+            existing_profile = self.player_repository.get_player_profile_by_user_id(user['id'])
+            
+            if existing_profile:
+                # El usuario ya tiene perfil, no se puede crear otro
+                raise ValueError(f"El usuario con email {email} ya tiene un perfil de jugador")
+            
+            # El usuario existe pero no tiene perfil, crear solo el perfil
+            # Actualizar información del usuario si se proporciona
+            if first_name or last_name or phone or date_of_birth:
+                # Nota: Aquí se podría actualizar el usuario si hay un método para eso
+                # Por ahora, solo creamos el perfil
+                pass
+        else:
+            # Verificar que el username no esté en uso
+            existing_user_by_username = self.player_repository.get_user_by_username(username)
+            if existing_user_by_username:
+                raise ValueError(f"Ya existe un usuario con el username: {username}")
+            
+            # Crear el usuario
+            user = self.player_repository.create_user(
+                email=email,
+                username=username,
+                first_name=first_name,
+                last_name=last_name,
+                phone=phone,
+                date_of_birth=date_of_birth
+            )
         
-        existing_user = self.player_repository.get_user_by_username(username)
-        if existing_user:
-            raise ValueError(f"Ya existe un usuario con el username: {username}")
-        
-        # Crear el usuario
-        user = self.player_repository.create_user(
-            email=email,
-            username=username,
-            first_name=first_name,
-            last_name=last_name,
-            phone=phone,
-            date_of_birth=date_of_birth
-        )
-        
-        # Crear el perfil de jugador
+        # Crear el perfil de jugador (ya sea para usuario nuevo o existente)
         player_profile = self.player_repository.create_player_profile(
             user_id=user['id'],
             handicap=handicap,

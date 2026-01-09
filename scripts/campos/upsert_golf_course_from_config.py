@@ -99,6 +99,7 @@ def upsert_golf_course_from_file(config_path: Path):
             length = hole_cfg.get("length")
             fairway_wkt = hole_cfg.get("fairway_polygon_wkt")
             green_wkt = hole_cfg.get("green_polygon_wkt")
+            bbox_wkt = hole_cfg.get("bbox_polygon_wkt")
 
             print(f"\nProcesando hoyo {hole_number}...")
 
@@ -117,50 +118,43 @@ def upsert_golf_course_from_file(config_path: Path):
                 print(f"  - Hoyo existente encontrado (id={hole_id}), actualizando...")
                 
                 # Actualizar el hoyo
-                if fairway_wkt and green_wkt:
-                    cur.execute(
-                        """
-                        UPDATE hole 
-                        SET par = %s, length = %s,
-                            fairway_polygon = ST_GeogFromText(%s),
-                            green_polygon = ST_GeogFromText(%s)
-                        WHERE id = %s;
-                        """,
-                        (par, length, fairway_wkt, green_wkt, hole_id),
-                    )
-                elif fairway_wkt:
-                    cur.execute(
-                        """
-                        UPDATE hole 
-                        SET par = %s, length = %s,
-                            fairway_polygon = ST_GeogFromText(%s),
-                            green_polygon = NULL
-                        WHERE id = %s;
-                        """,
-                        (par, length, fairway_wkt, hole_id),
-                    )
-                elif green_wkt:
-                    cur.execute(
-                        """
-                        UPDATE hole 
-                        SET par = %s, length = %s,
-                            fairway_polygon = NULL,
-                            green_polygon = ST_GeogFromText(%s)
-                        WHERE id = %s;
-                        """,
-                        (par, length, green_wkt, hole_id),
-                    )
+                # Construir la query dinámicamente según qué polígonos están disponibles
+                update_fields = []
+                update_values = []
+                
+                if par is not None:
+                    update_fields.append("par = %s")
+                    update_values.append(par)
+                if length is not None:
+                    update_fields.append("length = %s")
+                    update_values.append(length)
+                
+                if fairway_wkt:
+                    update_fields.append("fairway_polygon = ST_GeogFromText(%s)")
+                    update_values.append(fairway_wkt)
                 else:
-                    cur.execute(
-                        """
-                        UPDATE hole 
-                        SET par = %s, length = %s,
-                            fairway_polygon = NULL,
-                            green_polygon = NULL
-                        WHERE id = %s;
-                        """,
-                        (par, length, hole_id),
-                    )
+                    update_fields.append("fairway_polygon = NULL")
+                
+                if green_wkt:
+                    update_fields.append("green_polygon = ST_GeogFromText(%s)")
+                    update_values.append(green_wkt)
+                else:
+                    update_fields.append("green_polygon = NULL")
+                
+                if bbox_wkt:
+                    update_fields.append("bbox_polygon = ST_GeogFromText(%s)")
+                    update_values.append(bbox_wkt)
+                else:
+                    update_fields.append("bbox_polygon = NULL")
+                
+                update_values.append(hole_id)
+                
+                query = f"""
+                    UPDATE hole 
+                    SET {', '.join(update_fields)}
+                    WHERE id = %s;
+                """
+                cur.execute(query, tuple(update_values))
                 
                 # Eliminar datos relacionados existentes para recrearlos
                 print(f"  - Eliminando datos relacionados del hoyo...")
@@ -172,49 +166,55 @@ def upsert_golf_course_from_file(config_path: Path):
             else:
                 print(f"  - Hoyo no encontrado, creando nuevo...")
                 # Crear nuevo hoyo
-                if fairway_wkt and green_wkt:
-                    cur.execute(
-                        """
-                        INSERT INTO hole (
-                            course_id, hole_number, par, length,
-                            fairway_polygon, green_polygon
-                        )
-                        VALUES (
-                            %s, %s, %s, %s,
-                            ST_GeogFromText(%s),
-                            ST_GeogFromText(%s)
-                        )
-                        RETURNING id;
-                        """,
-                        (
-                            course_id,
-                            hole_number,
-                            par,
-                            length,
-                            fairway_wkt,
-                            green_wkt,
-                        ),
-                    )
+                # Construir la query dinámicamente según qué polígonos están disponibles
+                insert_fields = ["course_id", "hole_number"]
+                insert_placeholders = ["%s", "%s"]
+                insert_values = [course_id, hole_number]
+                
+                if par is not None:
+                    insert_fields.append("par")
+                    insert_placeholders.append("%s")
+                    insert_values.append(par)
+                if length is not None:
+                    insert_fields.append("length")
+                    insert_placeholders.append("%s")
+                    insert_values.append(length)
+                
+                if fairway_wkt:
+                    insert_fields.append("fairway_polygon")
+                    insert_placeholders.append("ST_GeogFromText(%s)")
+                    insert_values.append(fairway_wkt)
                 else:
-                    cur.execute(
-                        """
-                        INSERT INTO hole (
-                            course_id, hole_number, par, length,
-                            fairway_polygon, green_polygon
-                        )
-                        VALUES (
-                            %s, %s, %s, %s,
-                            NULL, NULL
-                        )
-                        RETURNING id;
-                        """,
-                        (
-                            course_id,
-                            hole_number,
-                            par,
-                            length,
-                        ),
-                    )
+                    insert_fields.append("fairway_polygon")
+                    insert_placeholders.append("NULL")
+                
+                if green_wkt:
+                    insert_fields.append("green_polygon")
+                    insert_placeholders.append("ST_GeogFromText(%s)")
+                    insert_values.append(green_wkt)
+                else:
+                    insert_fields.append("green_polygon")
+                    insert_placeholders.append("NULL")
+                
+                if bbox_wkt:
+                    insert_fields.append("bbox_polygon")
+                    insert_placeholders.append("ST_GeogFromText(%s)")
+                    insert_values.append(bbox_wkt)
+                else:
+                    insert_fields.append("bbox_polygon")
+                    insert_placeholders.append("NULL")
+                
+                query = f"""
+                    INSERT INTO hole ({', '.join(insert_fields)})
+                    VALUES ({', '.join(insert_placeholders)})
+                    RETURNING id;
+                """
+                # Solo incluir valores para los placeholders que no son NULL
+                final_values = []
+                for i, placeholder in enumerate(insert_placeholders):
+                    if placeholder != "NULL":
+                        final_values.append(insert_values[i])
+                cur.execute(query, tuple(final_values))
                 hole_id = cur.fetchone()["id"]
                 print(f"  - hole.id = {hole_id} (creado)")
 
