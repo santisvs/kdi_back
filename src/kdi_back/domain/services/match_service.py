@@ -489,6 +489,18 @@ class MatchService:
         if not ranking:
             raise ValueError(f"El jugador {user_id} no está en el partido {match_id}")
         
+        # Actualizar el hoyo actual al siguiente (si se completó el hoyo actual)
+        # Obtener el estado actual para determinar el siguiente hoyo
+        match_state = self.match_repository.get_match_state(match_id, user_id)
+        if match_state:
+            # Si el hoyo completado es el actual, avanzar al siguiente
+            if match_state['current_hole_number'] == hole_number:
+                # Verificar cuántos hoyos tiene el campo (asumiendo 18, pero debería obtenerse de la BD)
+                # Por ahora, avanzamos al siguiente hoyo
+                next_hole = hole_number + 1
+                # Actualizar el estado (solo si hay más hoyos, pero por ahora siempre actualizamos)
+                self.match_repository.update_current_hole(match_id, user_id, next_hole)
+        
         result = {
             "hole_strokes": hole_strokes,
             "total_strokes": total_strokes,

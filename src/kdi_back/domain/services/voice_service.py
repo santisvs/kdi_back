@@ -511,8 +511,9 @@ class VoiceService:
         course_id = hole_info['course_id']
         hole_number = hole_info['hole_number']
         
-        # Obtener estadísticas del jugador
+        # Obtener estadísticas del jugador y perfil
         player_club_statistics = None
+        player_profile = None
         if self.player_service:
             try:
                 player_profile = self.player_service.player_repository.get_player_profile_by_user_id(user_id)
@@ -523,27 +524,53 @@ class VoiceService:
             except Exception as e:
                 print(f"Advertencia: No se pudo obtener perfil del jugador: {e}")
         
-        # Verificar que el hoyo tenga bandera
-        distance_to_flag = self.golf_service.golf_repository.calculate_distance_to_hole(
-            hole_id, latitude, longitude
+        # Determinar si el jugador está en el green
+        is_on_green = self.golf_service.golf_repository.is_ball_on_green(hole_id, latitude, longitude)
+        
+        # Determinar si el jugador está en el tee de salida y obtener el tee correcto
+        tee_position = self._get_appropriate_tee_position(
+            hole_id, course_id, hole_number, latitude, longitude, player_profile
         )
-        if distance_to_flag is None:
+        
+        # Usar posición del tee si está en el tee, sino usar posición actual
+        calculation_latitude = tee_position['latitude'] if tee_position else latitude
+        calculation_longitude = tee_position['longitude'] if tee_position else longitude
+        
+        # Obtener distancia según la posición del jugador
+        if is_on_green:
+            # Si está en el green, usar distancia al hoyo (flag)
+            distance_to_target = self.golf_service.golf_repository.calculate_distance_to_hole(
+                hole_id, calculation_latitude, calculation_longitude
+            )
+            distance_reference = "hoyo"
+        else:
+            # Si está fuera del green, usar distancia al inicio del green (punto final del último optimal_shot)
+            distance_to_target = self.golf_service.golf_repository.calculate_distance_to_green_start(
+                hole_id, calculation_latitude, calculation_longitude
+            )
+            distance_reference = "inicio del green"
+        
+        if distance_to_target is None:
             return {
-                'response': f"El hoyo {hole_number} no tiene una bandera definida. No puedo darte una recomendación precisa.",
+                'response': f"El hoyo {hole_number} no tiene la información necesaria. No puedo darte una recomendación precisa.",
                 'data': {'hole_number': hole_number}
             }
         
+        # Usar posición de cálculo (tee si está en tee, sino posición actual)
+        calculation_lat = calculation_latitude
+        calculation_lon = calculation_longitude
+        
         # Ejecutar algoritmo evolutivo (misma lógica que trajectory-options-evol)
         trayectorias_optimal = self.golf_service.bola_menos_10m_optimal_shot(
-            latitude=latitude,
-            longitude=longitude,
+            latitude=calculation_lat,
+            longitude=calculation_lon,
             hole_id=hole_id,
             player_club_statistics=player_club_statistics
         )
         
         trayectorias_completas = self.golf_service.find_strategic_shot(
-            latitude=latitude,
-            longitude=longitude,
+            latitude=calculation_lat,
+            longitude=calculation_lon,
             hole_id=hole_id,
             player_club_statistics=player_club_statistics,
             trayectorias_existentes=trayectorias_optimal
@@ -552,6 +579,8 @@ class VoiceService:
         resultado_final = self.golf_service.evaluacion_final(trayectorias_completas)
         
         trayectoria_optima = resultado_final.get('trayectoria_optima')
+        trayectoria_conservadora = resultado_final.get('trayectoria_conservadora')
+        trayectoria_riesgo = resultado_final.get('trayectoria_riesgo')
         
         # Si no hay trayectoria válida
         if not isinstance(trayectoria_optima, dict):
@@ -559,6 +588,9 @@ class VoiceService:
                 'response': "No pude calcular una trayectoria óptima para tu posición actual. Te recomiendo jugar conservador y buscar la calle.",
                 'data': {'hole_info': hole_info}
             }
+        
+        # Guardar distancia para uso posterior
+        distance_to_flag = distance_to_target  # Mantener nombre de variable para compatibilidad
         
         # Extraer información de la trayectoria óptima
         distance_meters = trayectoria_optima.get('distance_meters', 0)
@@ -571,14 +603,12 @@ class VoiceService:
         obstacles = trayectoria_optima.get('obstacles', [])
         risk_level = trayectoria_optima.get('risk_level', {})
         risk_total = risk_level.get('total', 0) if isinstance(risk_level, dict) else 0
+        is_optimal_shot = trayectoria_optima.get('is_optimal_shot', False)
         
-        # Construir respuesta en lenguaje natural
+        # Construir respuesta en lenguaje natural según nuevo patrón
         response_parts = []
         
-        # Distancia
-        response_parts.append(f"Estás a {distance_meters:.0f} metros del {'hoyo' if target == 'flag' else 'objetivo'}")
-        
-        # Palo recomendado
+        # 2. Determinar objetivo del campo y tipo de swing (necesario antes de generar mensajes)
         if swing_type == 'completo':
             swing_text = "con swing completo"
         elif swing_type == '3/4':
@@ -586,26 +616,105 @@ class VoiceService:
         elif swing_type == '1/2':
             swing_text = "con swing de medio"
         else:
-            swing_text = ""
+            swing_text = "con swing completo"  # Default
         
-        if target == 'flag':
-            response_parts.append(f"te recomiendo utilizar {recommended_club} {swing_text} intentando alcanzar el green")
-        else:
-            response_parts.append(f"te recomiendo utilizar {recommended_club} {swing_text} hacia {waypoint_desc or 'el punto estratégico'}")
-        
-        # Obstáculos
-        if obstacles:
-            obstacle_names = [obs.get('name', obs.get('type', 'obstáculo')) for obs in obstacles[:2]]
-            if len(obstacles) > 2:
-                response_parts.append(f"Ten en cuenta los obstáculos: {', '.join(obstacle_names)} y otros")
+        # Si está en el green, usar mensaje especial basado en golpes vs par
+        if is_on_green:
+            # Obtener número de golpes actuales y par del hoyo
+            current_strokes = 0
+            par = None
+            try:
+                current_strokes = self.match_service.match_repository.get_hole_strokes_for_player(
+                    match_id, user_id, hole_id
+                )
+                par = hole_info.get('par')
+            except Exception as e:
+                print(f"Advertencia: No se pudo obtener golpes actuales: {e}")
+            
+            # Generar mensaje especial para green
+            green_message = self._generate_green_message(
+                current_strokes, par, distance_to_target, recommended_club, swing_text
+            )
+            if green_message:
+                response_parts.append(green_message)
             else:
-                response_parts.append(f"Ten en cuenta: {', '.join(obstacle_names)}")
+                # Fallback al mensaje normal si no se puede generar el especial
+                response_parts.append(f"Estás a {distance_to_target:.0f} metros del {distance_reference}")
+        else:
+            # 1. Distancia al objetivo (inicio del green si está fuera)
+            response_parts.append(f"Estás a {distance_to_target:.0f} metros del {distance_reference}")
         
-        # Riesgo
-        if risk_total > 50:
-            response_parts.append("Esta es una jugada de riesgo, considera una opción más conservadora")
-        elif risk_total > 30:
-            response_parts.append("Esta jugada tiene un riesgo moderado")
+        # Determinar objetivo del campo
+        if target == 'flag':
+            objetivo_campo = "el green"
+        elif is_optimal_shot:
+            # Para optimal_shots, siempre usar "centro de la calle" con referencias visuales si hay obstáculos
+            objetivo_campo = self._format_optimal_shot_target(obstacles)
+        elif waypoint_desc:
+            # Para strategic_points, extraer el nombre descriptivo
+            # waypoint_desc puede ser "Centro calle antes de bunkers a 170m de green"
+            # Necesitamos extraer la parte relevante (ej: "centro de calle", "antegreen")
+            objetivo_campo = self._extract_field_target(waypoint_desc)
+        else:
+            objetivo_campo = "el punto estratégico"
+        
+        # 3. Recomendación principal (solo si no está en el green, ya que en green tiene mensaje especial)
+        if not is_on_green:
+            # Calcular distancia que quedará después del golpe para determinar si alcanza el green
+            distancia_despues = None
+            if distance_to_target is not None:
+                distancia_despues = distance_to_target - distance_meters
+            
+            # Si el golpe alcanza o pasa el green, no incluir la distancia del golpe
+            if distancia_despues is not None and distancia_despues <= 0:
+                # El golpe alcanzará o pasará el inicio del green - no incluir distancia
+                if objetivo_campo == "el green":
+                    response_parts.append(f"Te recomiendo utilizar {recommended_club} {swing_text} para alcanzar el green")
+                else:
+                    response_parts.append(f"Te recomiendo utilizar {recommended_club} {swing_text} para alcanzar {objetivo_campo}")
+            else:
+                # El golpe no alcanza el green - incluir distancia
+                response_parts.append(f"Te recomiendo utilizar {recommended_club} {swing_text} para hacer {distance_meters:.0f} metros {objetivo_campo}")
+        
+        # 4. Calcular distancia que quedará después del golpe (solo si no está en el green)
+        if not is_on_green and distance_to_target is not None:
+            distancia_despues = distance_to_target - distance_meters
+            
+            # Si la distancia recomendada alcanza o pasa el objetivo
+            if distancia_despues <= 0:
+                # El golpe alcanzará o pasará el inicio del green
+                if risk_total <= 30:
+                    response_parts.append("Esta es una opción segura")
+                else:
+                    response_parts.append("Esta opción te permitirá alcanzar el green")
+            elif distancia_despues > 0:
+                # Determinar idea del siguiente golpe basado en la distancia restante
+                siguiente_golpe = self._get_next_shot_description(distancia_despues, target, waypoint_desc, is_on_green)
+                if siguiente_golpe:
+                    # Determinar si es opción segura o de riesgo
+                    if risk_total <= 30:
+                        referencia = "inicio del green"
+                        # Si distancia > 120m, no incluir tipo de golpe
+                        if distancia_despues > 120:
+                            response_parts.append(f"Esta es una opción segura que te dejará a {distancia_despues:.0f} metros del {referencia}")
+                        else:
+                            tipo_golpe = self._get_shot_type_from_distance(distancia_despues)
+                            if tipo_golpe:
+                                response_parts.append(f"Esta es una opción segura que te dejará a {distancia_despues:.0f} metros del {referencia} para {tipo_golpe}")
+                            else:
+                                response_parts.append(f"Esta es una opción segura que te dejará a {distancia_despues:.0f} metros del {referencia}")
+                    else:
+                        response_parts.append(f"Esta opción te permitirá {siguiente_golpe}")
+        
+        # 5. Otras opciones (conservadora o de riesgo)
+        if trayectoria_conservadora and isinstance(trayectoria_conservadora, dict):
+            opcion_alternativa = self._format_alternative_trajectory(trayectoria_conservadora, distance_to_target, "conservadora", is_on_green)
+            if opcion_alternativa:
+                response_parts.append(opcion_alternativa)
+        elif trayectoria_riesgo and isinstance(trayectoria_riesgo, dict):
+            opcion_alternativa = self._format_alternative_trajectory(trayectoria_riesgo, distance_to_target, "riesgo", is_on_green)
+            if opcion_alternativa:
+                response_parts.append(opcion_alternativa)
         
         response = ". ".join(response_parts) + "."
         
@@ -623,6 +732,416 @@ class VoiceService:
                 'hole_info': hole_info
             }
         }
+    
+    def _format_optimal_shot_target(self, obstacles: List[Dict[str, Any]]) -> str:
+        """
+        Formatea el objetivo del campo para optimal_shots.
+        Siempre usa "centro de la calle" y añade referencias visuales si hay obstáculos cercanos.
+        
+        Args:
+            obstacles: Lista de obstáculos en la trayectoria
+            
+        Returns:
+            String formateado como "al centro de la calle" o "buscando el centro de la calle a la altura del..."
+        """
+        if not obstacles or len(obstacles) == 0:
+            return "al centro de la calle"
+        
+        # Buscar el obstáculo más relevante (bunkers son los más comunes para referencias visuales)
+        bunker_obstacles = [obs for obs in obstacles if obs.get('type') == 'bunker']
+        
+        if bunker_obstacles:
+            # Tomar el primer bunker encontrado
+            bunker = bunker_obstacles[0]
+            bunker_name = bunker.get('name', '')
+            
+            if bunker_name:
+                referencia = self._parse_obstacle_reference(bunker_name)
+                if referencia:
+                    return f"buscando el centro de la calle a la altura de {referencia}"
+        
+        # Si no hay bunkers, usar el primer obstáculo relevante
+        if obstacles:
+            obs = obstacles[0]
+            obs_name = obs.get('name', '')
+            if obs_name and obs.get('type') in ['bunker', 'water', 'trees']:
+                referencia = self._parse_obstacle_reference(obs_name)
+                if referencia:
+                    return f"buscando el centro de la calle a la altura de {referencia}"
+        
+        return "al centro de la calle"
+    
+    def _parse_obstacle_reference(self, obstacle_name: str) -> Optional[str]:
+        """
+        Parsea el nombre del obstáculo y lo convierte a lenguaje natural.
+        
+        Formato esperado: "{Tipo} {Lado} {Hoyo}_{Posición}"
+        Ejemplos:
+        - "Bunker derecho 1_1" → "el primer bunker que tienes a la derecha"
+        - "Bunker izquierdo 2_2" → "el segundo bunker de la izquierda"
+        - "Agua izquierdo 3_1" → "el agua que tienes a la izquierda"
+        
+        Args:
+            obstacle_name: Nombre del obstáculo (ej: "Bunker derecho 1_1")
+            
+        Returns:
+            String formateado en lenguaje natural o None si no se puede parsear
+        """
+        if not obstacle_name:
+            return None
+        
+        # Dividir el nombre en partes
+        parts = obstacle_name.split()
+        if len(parts) < 2:
+            return None
+        
+        # Extraer tipo, lado y posición
+        tipo = parts[0].lower()  # "bunker", "agua", "trees", etc.
+        lado = parts[1].lower() if len(parts) > 1 else None
+        
+        # Buscar posición (formato: "1_1", "2_2", etc.)
+        posicion_str = None
+        for part in parts:
+            if '_' in part:
+                posicion_str = part
+                break
+        
+        # Convertir tipo a español
+        tipo_espanol = {
+            'bunker': 'bunker',
+            'agua': 'agua',
+            'water': 'agua',
+            'trees': 'árboles',
+            'arboles': 'árboles'
+        }.get(tipo, tipo)
+        
+        # Convertir lado a español
+        lado_espanol = {
+            'derecho': 'derecha',
+            'derecha': 'derecha',
+            'izquierdo': 'izquierda',
+            'izquierda': 'izquierda'
+        }.get(lado, lado) if lado else None
+        
+        # Convertir posición a número ordinal
+        posicion_num = None
+        if posicion_str:
+            try:
+                # Extraer el número después del guion bajo
+                posicion_num = int(posicion_str.split('_')[1])
+            except (ValueError, IndexError):
+                pass
+        
+        # Construir referencia
+        if posicion_num and lado_espanol:
+            # Números ordinales en español
+            ordinales = {
+                1: 'primer',
+                2: 'segundo',
+                3: 'tercer',
+                4: 'cuarto',
+                5: 'quinto',
+                6: 'sexto',
+                7: 'séptimo',
+                8: 'octavo',
+                9: 'noveno',
+                10: 'décimo'
+            }
+            ordinal = ordinales.get(posicion_num, f'{posicion_num}º')
+            
+            if lado_espanol == 'derecha':
+                return f"el {ordinal} {tipo_espanol} que tienes a la derecha"
+            elif lado_espanol == 'izquierda':
+                return f"el {ordinal} {tipo_espanol} de la izquierda"
+        elif lado_espanol:
+            # Si no hay posición, usar solo el lado
+            if lado_espanol == 'derecha':
+                return f"el {tipo_espanol} que tienes a la derecha"
+            elif lado_espanol == 'izquierda':
+                return f"el {tipo_espanol} de la izquierda"
+        
+        return None
+    
+    def _generate_green_message(
+        self, 
+        current_strokes: int, 
+        par: Optional[int], 
+        distance_to_hole: float,
+        recommended_club: str,
+        swing_text: str
+    ) -> Optional[str]:
+        """
+        Genera un mensaje especial cuando el jugador está en el green.
+        El mensaje depende del número de golpes actuales vs el par del hoyo.
+        
+        Args:
+            current_strokes: Número de golpes actuales en el hoyo
+            par: Par del hoyo (None si no está disponible)
+            distance_to_hole: Distancia al hoyo en metros
+            recommended_club: Palo recomendado
+            swing_text: Texto del tipo de swing
+            
+        Returns:
+            Mensaje formateado o None si no se puede generar
+        """
+        if par is None:
+            # Si no hay par, usar mensaje genérico (sin distancia)
+            return f"Te recomiendo utilizar {recommended_club} {swing_text} para alcanzar el green."
+        
+        # Calcular resultado si mete la bola en este putt
+        strokes_if_made = current_strokes + 1
+        result_vs_par = strokes_if_made - par
+        
+        # Generar mensaje según el resultado (sin incluir distancia al hoyo)
+        if result_vs_par < 0:
+            # Birdie o mejor (eagle, albatross)
+            if result_vs_par == -1:
+                return f"Metiendo la bola haces un birdie, pero evalúa la posibilidad de un golpe de aproximación para asegurar el par."
+            elif result_vs_par == -2:
+                return f"Metiendo la bola haces un eagle, pero evalúa la posibilidad de un golpe de aproximación para asegurar el par."
+            else:
+                return f"Metiendo la bola haces un resultado excelente ({abs(result_vs_par)} bajo par), pero evalúa la posibilidad de un golpe de aproximación para asegurar el par."
+        elif result_vs_par == 0:
+            # Par
+            return f"Metiendo la bola haces par. Te recomiendo utilizar {recommended_club} {swing_text} para alcanzar el green."
+        elif result_vs_par == 1:
+            # Bogey
+            return f"Metiendo la bola haces un bogey. Te recomiendo utilizar {recommended_club} {swing_text} para alcanzar el green."
+        elif result_vs_par == 2:
+            # Doble bogey
+            return f"Metiendo la bola haces un doble bogey. Te recomiendo utilizar {recommended_club} {swing_text} para alcanzar el green."
+        else:
+            # Triple bogey o peor
+            return f"Metiendo la bola haces {result_vs_par} sobre par. Te recomiendo utilizar {recommended_club} {swing_text} para alcanzar el green."
+    
+    def _get_appropriate_tee_position(
+        self,
+        hole_id: int,
+        course_id: int,
+        hole_number: int,
+        latitude: float,
+        longitude: float,
+        player_profile: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Determina el tee de salida apropiado según el género y nivel del jugador.
+        
+        Reglas:
+        - Mujer (no profesional) → Tee rojo
+        - Hombre (no profesional) → Tee amarillo
+        - Profesional (hombre o mujer) → Tee blanco
+        
+        Si el jugador está cerca del tee de salida, devuelve las coordenadas del tee correcto.
+        Si no está en el tee, devuelve None.
+        
+        Args:
+            hole_id: ID del hoyo
+            course_id: ID del campo
+            hole_number: Número del hoyo
+            latitude: Latitud actual de la bola
+            longitude: Longitud actual de la bola
+            player_profile: Perfil del jugador (con gender y skill_level)
+            
+        Returns:
+            Diccionario con 'latitude' y 'longitude' del tee apropiado si está en el tee,
+            None si no está en el tee o no se puede determinar
+        """
+        if not player_profile:
+            return None
+        
+        gender = player_profile.get('gender', '').lower() if player_profile.get('gender') else None
+        skill_level = player_profile.get('skill_level', '').lower() if player_profile.get('skill_level') else None
+        
+        # Determinar tipo de tee según reglas
+        is_professional = skill_level == 'professional'
+        
+        if is_professional:
+            tee_type = 'tee_white'
+        elif gender == 'female':
+            tee_type = 'tee'  # tee rojo (tee sin sufijo es rojo)
+        elif gender == 'male':
+            tee_type = 'tee_yellow'
+        else:
+            # Si no hay género definido, usar tee amarillo por defecto
+            tee_type = 'tee_yellow'
+        
+        # Obtener geometría del hoyo para encontrar los tees
+        try:
+            hole_geometry = self.golf_service.golf_repository.get_hole_geometry(course_id, hole_number)
+            if not hole_geometry or 'tees' not in hole_geometry:
+                return None
+            
+            # Buscar el tee apropiado
+            tees = hole_geometry.get('tees', [])
+            target_tee = None
+            
+            # Mapear tipo de tee a formato normalizado
+            tee_type_map = {
+                'tee_white': 'white',
+                'tee_yellow': 'yellow',
+                'tee': 'red',
+                'tee_red': 'red'
+            }
+            target_tee_type = tee_type_map.get(tee_type, 'yellow')
+            
+            for tee in tees:
+                if tee.get('type') == target_tee_type:
+                    target_tee = tee
+                    break
+            
+            if not target_tee:
+                return None
+            
+            # Verificar si el jugador está cerca del tee (dentro de 10 metros)
+            tee_lat = target_tee.get('latitude')
+            tee_lon = target_tee.get('longitude')
+            
+            if tee_lat and tee_lon:
+                distance_to_tee = self.golf_service.golf_repository.calculate_distance_between_points(
+                    latitude, longitude, tee_lat, tee_lon
+                )
+                
+                # Si está cerca del tee (dentro de 10 metros), usar el tee como posición de cálculo
+                if distance_to_tee <= 10.0:
+                    return {
+                        'latitude': tee_lat,
+                        'longitude': tee_lon,
+                        'tee_type': target_tee_type
+                    }
+            
+            return None
+        except Exception as e:
+            print(f"Advertencia: No se pudo obtener tee apropiado: {e}")
+            return None
+    
+    def _extract_field_target(self, waypoint_desc: str) -> str:
+        """
+        Extrae el objetivo del campo desde la descripción del waypoint.
+        Ejemplos:
+        - "Centro calle antes de bunkers a 170m de green" -> "el centro de calle"
+        - "Antegreen para chip a 12m de green" -> "el antegreen"
+        - "Centro calle a 100m de green" -> "el centro de calle"
+        """
+        if not waypoint_desc:
+            return "el punto estratégico"
+        
+        waypoint_lower = waypoint_desc.lower()
+        
+        # Buscar patrones comunes
+        if "centro calle" in waypoint_lower or "centro de calle" in waypoint_lower:
+            return "el centro de calle"
+        elif "antegreen" in waypoint_lower:
+            return "el antegreen"
+        elif "approach" in waypoint_lower:
+            return "la zona de approach"
+        elif "layup" in waypoint_lower:
+            return "la zona de layup"
+        elif "green" in waypoint_lower:
+            return "el green"
+        else:
+            # Si no coincide con ningún patrón, usar la descripción original
+            # pero simplificada (tomar las primeras palabras)
+            palabras = waypoint_desc.split()
+            if len(palabras) > 3:
+                return f"el {palabras[0].lower()}"
+            return waypoint_desc.lower()
+    
+    def _get_next_shot_description(self, distancia_restante: float, target: str, waypoint_desc: Optional[str] = None, is_on_green: bool = False) -> Optional[str]:
+        """
+        Determina la descripción del siguiente golpe basado en la distancia restante.
+        
+        Args:
+            distancia_restante: Distancia restante en metros
+            target: Tipo de objetivo ('flag', 'waypoint', etc.)
+            waypoint_desc: Descripción del waypoint (opcional)
+            is_on_green: Si el jugador está en el green (usa "hoyo" en lugar de "inicio del green")
+        """
+        referencia = "hoyo" if is_on_green else "inicio del green"
+        
+        if distancia_restante <= 0:
+            return f"alcanzar el {referencia}" if not is_on_green else "alcanzar el hoyo"
+        
+        # Si la distancia es mayor a 120m, no usar la palabra "approach"
+        if distancia_restante > 120:
+            return f"quedar a {distancia_restante:.0f} metros del {referencia}"
+        
+        # Construir mensaje: "quedar a X metros del {referencia} para {tipo}"
+        tipo_siguiente = self._get_shot_type_from_distance(distancia_restante)
+        return f"quedar a {distancia_restante:.0f} metros del {referencia} para {tipo_siguiente}"
+    
+    def _get_shot_type_from_distance(self, distancia: float) -> str:
+        """
+        Determina el tipo de golpe basado en la distancia al green.
+        Nota: No devuelve "approach" si la distancia es mayor a 120m.
+        """
+        if distancia <= 20:
+            return "chip o putt"
+        elif distancia <= 50:
+            return "approach corto"
+        elif distancia <= 100:
+            return "approach medio"
+        elif distancia <= 120:
+            return "approach largo"
+        else:
+            # Para distancias > 120m, no usar "approach"
+            return ""  # Se manejará en _get_next_shot_description o se omitirá
+    
+    def _format_alternative_trajectory(self, trayectoria: Dict[str, Any], distance_to_target: Optional[float], tipo: str, is_on_green: bool = False) -> Optional[str]:
+        """
+        Formatea una trayectoria alternativa (conservadora o de riesgo) para el mensaje.
+        """
+        if not isinstance(trayectoria, dict):
+            return None
+        
+        club_rec = trayectoria.get('club_recommendation', {})
+        recommended_club = club_rec.get('recommended_club', 'un palo apropiado')
+        swing_type = club_rec.get('swing_type', 'completo')
+        target = trayectoria.get('target', 'flag')
+        waypoint_desc = trayectoria.get('waypoint_description')
+        distance_meters = trayectoria.get('distance_meters', 0)
+        is_optimal_shot = trayectoria.get('is_optimal_shot', False)
+        
+        # Determinar tipo de swing
+        if swing_type == 'completo':
+            swing_text = "con swing completo"
+        elif swing_type == '3/4':
+            swing_text = "con swing de tres cuartos"
+        elif swing_type == '1/2':
+            swing_text = "con swing de medio"
+        else:
+            swing_text = "con swing completo"
+        
+        # Determinar objetivo del campo
+        if target == 'flag':
+            objetivo_campo = "el green"
+        elif is_optimal_shot:
+            # Para optimal_shots, usar el mismo formato que en la recomendación principal
+            obstacles_alt = trayectoria.get('obstacles', [])
+            objetivo_campo = self._format_optimal_shot_target(obstacles_alt)
+        elif waypoint_desc:
+            objetivo_campo = self._extract_field_target(waypoint_desc)
+        else:
+            objetivo_campo = "el punto estratégico"
+        
+        # Construir mensaje según el tipo
+        distancia_reference = "inicio del green" if not is_on_green else "hoyo"
+        
+        if tipo == "conservadora":
+            if distance_to_target is not None:
+                distancia_despues = distance_to_target - distance_meters
+                if distancia_despues > 0:
+                    siguiente_golpe = self._get_next_shot_description(distancia_despues, target, waypoint_desc, is_on_green)
+                    if siguiente_golpe:
+                        return f"También tienes la opción más conservadora de usar {recommended_club} {swing_text} para hacer {distance_meters:.0f} metros {objetivo_campo}, que te permitirá {siguiente_golpe}"
+            return f"También tienes la opción más conservadora de usar {recommended_club} {swing_text} para hacer {distance_meters:.0f} metros {objetivo_campo}"
+        else:  # tipo == "riesgo"
+            if distance_to_target is not None:
+                distancia_despues = distance_to_target - distance_meters
+                if distancia_despues > 0:
+                    siguiente_golpe = self._get_next_shot_description(distancia_despues, target, waypoint_desc, is_on_green)
+                    if siguiente_golpe:
+                        return f"También tienes la opción de usar {recommended_club} {swing_text} para hacer {distance_meters:.0f} metros {objetivo_campo}, con mayor riesgo pero que te permitirá {siguiente_golpe}"
+            return f"También tienes la opción de usar {recommended_club} {swing_text} para hacer {distance_meters:.0f} metros {objetivo_campo}, con mayor riesgo"
     
     def _handle_register_stroke(
         self,

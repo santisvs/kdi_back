@@ -134,6 +134,39 @@ class GolfRepository(ABC):
         pass
     
     @abstractmethod
+    def get_last_optimal_shot(self, hole_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Obtiene el último optimal_shot de un hoyo (el de mayor shot_number).
+        El punto final de este optimal_shot representa el inicio del green.
+        
+        Args:
+            hole_id: ID del hoyo
+            
+        Returns:
+            Diccionario con información del último optimal_shot, incluyendo:
+            - end_lat: Latitud del punto final (inicio del green)
+            - end_lon: Longitud del punto final (inicio del green)
+            None si no hay optimal_shots
+        """
+        pass
+    
+    @abstractmethod
+    def calculate_distance_to_green_start(self, hole_id: int, latitude: float, longitude: float) -> Optional[float]:
+        """
+        Calcula la distancia desde la posición de la bola hasta el inicio del green.
+        El inicio del green es el punto final del último optimal_shot del hoyo.
+        
+        Args:
+            hole_id: ID del hoyo
+            latitude: Latitud de la posición de la bola
+            longitude: Longitud de la posición de la bola
+            
+        Returns:
+            Distancia en metros al inicio del green si se encuentra, None si no
+        """
+        pass
+    
+    @abstractmethod
     def find_next_optimal_waypoint(self, hole_id: int, latitude: float, longitude: float) -> Optional[Dict[str, Any]]:
         """
         Encuentra el siguiente waypoint óptimo desde la posición actual de la bola.

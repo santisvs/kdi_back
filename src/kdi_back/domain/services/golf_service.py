@@ -485,8 +485,23 @@ class GolfService:
         if distance_to_flag is None:
             raise ValueError(f"No se encontró la bandera para el hoyo {hole_id}")
         
-        # Obtener todos los strategic_points del hoyo (ordenados por distance_to_flag ASC - más cercano al green primero)
-        strategic_points = self.golf_repository.get_strategic_points(hole_id)
+        # Obtener todos los strategic_points del hoyo
+        all_strategic_points = self.golf_repository.get_strategic_points(hole_id)
+        
+        # Filtrar strategic_points: solo incluir los que están entre la posición actual y el hoyo
+        # (excluir los que están más lejos del hoyo que la posición actual - ya pasados)
+        strategic_points = []
+        for point in all_strategic_points:
+            point_distance_to_flag = point.get('distance_to_flag')
+            if point_distance_to_flag is not None:
+                # Solo incluir puntos que están más cerca del hoyo que la posición actual
+                # (distance_to_flag < distance_to_flag desde la posición actual)
+                if point_distance_to_flag < distance_to_flag:
+                    strategic_points.append(point)
+        
+        # Ordenar strategic_points desde el más cercano al más lejano al hoyo (ASC)
+        # Orden de evaluación: primero el hoyo, luego strategic_points desde más cercano a más lejano
+        strategic_points.sort(key=lambda p: p.get('distance_to_flag', float('inf')))
         
         # ===== VERIFICAR SI DISTANCIA AL GREEN ES ALCANZABLE =====
         is_green_reachable = distance_to_flag <= max_distance
@@ -562,7 +577,7 @@ class GolfService:
                         "distance_meters": round(distance_to_optimal_endpoint, 2),
                         "distance_yards": round(distance_to_optimal_endpoint * 1.09361, 2),
                         "target": "waypoint",
-                        "waypoint_description": optimal_shot_endpoint['description'],
+                        "waypoint_description": None,  # No usar descripción del optimal_shot
                         "obstacles": [
                             {
                                 'id': obs.get('id'),
@@ -573,8 +588,10 @@ class GolfService:
                         ],
                         "obstacle_count": len(obstacles_optimal),
                         "risk_level": numeric_risk_optimal,
-                        "description": f"Trayectoria a optimal_shot: {optimal_shot_endpoint['description']}",
-                        "numeric_risk": numeric_risk_optimal
+                        "description": f"Trayectoria optimal shot a {round(distance_to_optimal_endpoint, 0):.0f} metros",
+                        "numeric_risk": numeric_risk_optimal,
+                        "club_recommendation": club_rec_optimal,  # Incluir recomendación de palo
+                        "is_optimal_shot": True  # Flag para identificar que viene de optimal_shot
                     }
                     should_search_conservative = True  # Buscar conservadora después
                 elif risk_optimal_total <= 30.0:
@@ -584,7 +601,7 @@ class GolfService:
                         "distance_meters": round(distance_to_optimal_endpoint, 2),
                         "distance_yards": round(distance_to_optimal_endpoint * 1.09361, 2),
                         "target": "waypoint",
-                        "waypoint_description": optimal_shot_endpoint['description'],
+                        "waypoint_description": None,  # No usar descripción del optimal_shot
                         "obstacles": [
                             {
                                 'id': obs.get('id'),
@@ -595,8 +612,10 @@ class GolfService:
                         ],
                         "obstacle_count": len(obstacles_optimal),
                         "risk_level": numeric_risk_optimal,
-                        "description": f"Trayectoria a optimal_shot: {optimal_shot_endpoint['description']}",
-                        "numeric_risk": numeric_risk_optimal
+                        "description": f"Trayectoria optimal shot a {round(distance_to_optimal_endpoint, 0):.0f} metros",
+                        "numeric_risk": numeric_risk_optimal,
+                        "club_recommendation": club_rec_optimal,  # Incluir recomendación de palo
+                        "is_optimal_shot": True  # Flag para identificar que viene de optimal_shot
                     }
                     should_search_conservative = False  # NO buscar conservadora
                     optimal_shot_is_final = True  # Marcar que optimal_shot es la óptima final, no buscar más
@@ -2001,6 +2020,7 @@ class GolfService:
         )
         
         # Primero evaluar trayectoria directa al green (flag) si existe y no tenemos 3 aún
+        # El hoyo siempre se evalúa primero en la lista de opciones
         if len(trayectorias) < 3 and distance_to_flag is not None:
             # Verificar si la distancia al flag es alcanzable
             if distance_to_flag <= max_distance:
@@ -2043,10 +2063,27 @@ class GolfService:
                 if self.is_trayectoria_valida(trayectoria_flag):
                     trayectorias.append(trayectoria_flag)
         
-        # Obtener todos los strategic_points del hoyo (ordenados por distance_to_flag ASC)
-        strategic_points = self.golf_repository.get_strategic_points(hole_id)
+        # Obtener todos los strategic_points del hoyo
+        all_strategic_points = self.golf_repository.get_strategic_points(hole_id)
+        
+        # Filtrar strategic_points: solo incluir los que están entre la posición actual y el hoyo
+        # (excluir los que están más lejos del hoyo que la posición actual - ya pasados)
+        strategic_points = []
+        if distance_to_flag is not None:
+            for point in all_strategic_points:
+                point_distance_to_flag = point.get('distance_to_flag')
+                if point_distance_to_flag is not None:
+                    # Solo incluir puntos que están más cerca del hoyo que la posición actual
+                    # (distance_to_flag < distance_to_flag desde la posición actual)
+                    if point_distance_to_flag < distance_to_flag:
+                        strategic_points.append(point)
+            
+            # Ordenar strategic_points desde el más cercano al más lejano al hoyo (ASC)
+            # Orden de evaluación: primero el hoyo, luego strategic_points desde más cercano a más lejano
+            strategic_points.sort(key=lambda p: p.get('distance_to_flag', float('inf')))
         
         # Recorrer strategic_points y calcular trayectorias hasta tener 3 válidas
+        # Orden: primero el hoyo (ya evaluado arriba), luego strategic_points desde más lejano a más cercano
         for point in strategic_points:
             if len(trayectorias) >= 3:
                 break

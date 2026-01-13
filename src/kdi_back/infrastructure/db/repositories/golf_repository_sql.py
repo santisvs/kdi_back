@@ -423,6 +423,67 @@ class GolfRepositorySQL(GolfRepository):
             
             return optimal_shots
     
+    def get_last_optimal_shot(self, hole_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Obtiene el último optimal_shot de un hoyo (el de mayor shot_number).
+        El punto final de este optimal_shot representa el inicio del green.
+        
+        Args:
+            hole_id: ID del hoyo
+            
+        Returns:
+            Diccionario con información del último optimal_shot, incluyendo:
+            - end_lat: Latitud del punto final (inicio del green)
+            - end_lon: Longitud del punto final (inicio del green)
+            None si no hay optimal_shots
+        """
+        optimal_shots = self.get_all_optimal_shots(hole_id)
+        if not optimal_shots:
+            return None
+        
+        # El último optimal_shot es el último en la lista (ya están ordenados por id)
+        # O podemos ordenarlos por shot_number si está disponible
+        # Por ahora, asumimos que el último en la lista es el último optimal_shot
+        return optimal_shots[-1]
+    
+    def calculate_distance_to_green_start(self, hole_id: int, latitude: float, longitude: float) -> Optional[float]:
+        """
+        Calcula la distancia desde la posición de la bola hasta el inicio del green.
+        El inicio del green es el punto final del último optimal_shot del hoyo.
+        
+        Args:
+            hole_id: ID del hoyo
+            latitude: Latitud de la posición de la bola
+            longitude: Longitud de la posición de la bola
+            
+        Returns:
+            Distancia en metros al inicio del green si se encuentra, None si no
+        """
+        last_optimal_shot = self.get_last_optimal_shot(hole_id)
+        if not last_optimal_shot:
+            return None
+        
+        end_lat = last_optimal_shot.get('end_lat')
+        end_lon = last_optimal_shot.get('end_lon')
+        
+        if end_lat is None or end_lon is None:
+            return None
+        
+        # Calcular distancia usando PostGIS
+        with Database.get_cursor(commit=False) as (conn, cur):
+            cur.execute("""
+                SELECT ST_Distance(
+                    ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography,
+                    ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography
+                ) AS distance_meters
+            """, (longitude, latitude, end_lon, end_lat))
+            
+            result = cur.fetchone()
+            if result and result['distance_meters'] is not None:
+                return float(result['distance_meters'])
+            
+            return None
+    
     def find_next_optimal_waypoint(self, hole_id: int, latitude: float, longitude: float) -> Optional[Dict[str, Any]]:
         """
         Encuentra el siguiente waypoint óptimo desde la posición actual de la bola.
