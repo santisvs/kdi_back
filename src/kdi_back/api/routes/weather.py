@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 """Weather routes"""
 from flask import Blueprint, jsonify, request
-from kdi_back.infrastructure.agents.weather_agent import get_weather_response
+# Usando agente LangChain (Claude 3 Haiku)
+from kdi_back.infrastructure.agents.weather_agent_langchain import get_weather_response
+# Agente legacy de Strands (mantenido pero no usado):
+# from kdi_back.infrastructure.agents.weather_agent import get_weather_response as get_weather_response_legacy
 
 weather_bp = Blueprint('weather', __name__)
 

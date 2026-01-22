@@ -985,32 +985,79 @@ def get_match_state(match_id, user_id):
 
 
 @match_bp.route('/match/player/<int:user_id>', methods=['GET'])
+@require_auth
 def get_matches_by_player(user_id):
     """
-    Endpoint para obtener todos los partidos de un jugador.
+    Endpoint para obtener los partidos de un jugador con filtros y paginación.
     
     Query parameters:
     - status: Filtro opcional por estado (in_progress, completed, cancelled)
+    - course_id: Filtro opcional por campo de golf
+    - start_date: Filtro opcional por fecha de inicio (formato YYYY-MM-DD)
+    - end_date: Filtro opcional por fecha de fin (formato YYYY-MM-DD)
+    - limit: Límite de resultados por página (opcional, default: sin límite)
+    - offset: Desplazamiento para paginación (opcional, default: 0)
     """
     try:
         status = request.args.get('status')
+        course_id = request.args.get('course_id')
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        limit = request.args.get('limit')
+        offset = request.args.get('offset')
+        
+        # Convertir course_id, limit y offset a int si se proporcionan
+        if course_id:
+            try:
+                course_id = int(course_id)
+            except (ValueError, TypeError):
+                return jsonify({"error": "El campo 'course_id' debe ser un número entero"}), 400
+        
+        if limit:
+            try:
+                limit = int(limit)
+                if limit <= 0:
+                    return jsonify({"error": "El campo 'limit' debe ser un número positivo"}), 400
+            except (ValueError, TypeError):
+                return jsonify({"error": "El campo 'limit' debe ser un número entero"}), 400
+        
+        if offset:
+            try:
+                offset = int(offset)
+                if offset < 0:
+                    return jsonify({"error": "El campo 'offset' debe ser un número no negativo"}), 400
+            except (ValueError, TypeError):
+                return jsonify({"error": "El campo 'offset' debe ser un número entero"}), 400
         
         match_service = get_match_service()
-        matches = match_service.get_matches_by_player(user_id, status)
+        result = match_service.get_matches_by_player(
+            user_id=user_id,
+            status=status,
+            course_id=course_id,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+            offset=offset
+        )
         
-        response = [
-            {
-                "id": m['id'],
-                "course_id": m['course_id'],
-                "name": m.get('name'),
-                "status": m['status'],
-                "started_at": format_datetime(m.get('started_at')),
-                "completed_at": format_datetime(m.get('completed_at')),
-                "created_at": format_datetime(m.get('created_at')),
-                "updated_at": format_datetime(m.get('updated_at'))
-            }
-            for m in matches
-        ]
+        response = {
+            "matches": [
+                {
+                    "id": m['id'],
+                    "course_id": m['course_id'],
+                    "name": m.get('name'),
+                    "status": m['status'],
+                    "started_at": format_datetime(m.get('started_at')),
+                    "completed_at": format_datetime(m.get('completed_at')),
+                    "created_at": format_datetime(m.get('created_at')),
+                    "updated_at": format_datetime(m.get('updated_at'))
+                }
+                for m in result['matches']
+            ],
+            "total": result['total'],
+            "limit": result.get('limit'),
+            "offset": result.get('offset', 0)
+        }
         
         return jsonify(response), 200
         
@@ -1022,6 +1069,126 @@ def get_matches_by_player(user_id):
     except Exception as e:
         return jsonify({
             "error": "Error al obtener los partidos del jugador",
+            "details": str(e)
+        }), 500
+
+
+@match_bp.route('/match/<int:match_id>/details', methods=['GET'])
+@require_auth
+def get_match_details_with_stats(match_id):
+    """
+    Endpoint para obtener los detalles completos de un partido.
+    
+    Incluye:
+    - Información del partido
+    - Lista de jugadores
+    - Hoyos jugados con puntuaciones
+    - Estadísticas del partido
+    
+    Respuesta exitosa (200):
+    {
+        "match": {
+            "id": 1,
+            "course_id": 1,
+            "name": "Partido de fin de semana",
+            "status": "completed",
+            "started_at": "2024-01-15T10:30:00",
+            "completed_at": "2024-01-15T14:30:00",
+            "created_at": "2024-01-15T10:30:00"
+        },
+        "players": [
+            {
+                "user_id": 1,
+                "username": "jugador1",
+                "total_strokes": 72,
+                "starting_hole_number": 1
+            }
+        ],
+        "scores": [
+            {
+                "hole_id": 1,
+                "hole_number": 1,
+                "par": 4,
+                "strokes": 4,
+                "completed_at": "2024-01-15T10:45:00"
+            }
+        ],
+        "statistics": {
+            "total_holes_played": 18,
+            "average_strokes_per_hole": 4.0,
+            "best_hole": 3,
+            "worst_hole": 6
+        }
+    }
+    """
+    try:
+        user_id = g.current_user['id']
+        match_service = get_match_service()
+        
+        # Obtener información del partido
+        match = match_service.match_repository.get_match_by_id(match_id)
+        if not match:
+            return jsonify({"error": "Partido no encontrado"}), 404
+        
+        # Verificar que el usuario está en el partido
+        players = match_service.match_repository.get_match_players(match_id)
+        user_in_match = any(p['user_id'] == user_id for p in players)
+        if not user_in_match:
+            return jsonify({"error": "No tienes acceso a este partido"}), 403
+        
+        # Obtener puntuaciones del usuario
+        scores = match_service.match_repository.get_player_scores(match_id, user_id)
+        
+        # Calcular estadísticas
+        total_holes = len(scores)
+        total_strokes = sum(s['strokes'] for s in scores) if scores else 0
+        average_strokes = total_strokes / total_holes if total_holes > 0 else 0
+        best_hole = min((s['strokes'] for s in scores), default=None)
+        worst_hole = max((s['strokes'] for s in scores), default=None)
+        
+        response = {
+            "match": {
+                "id": match['id'],
+                "course_id": match['course_id'],
+                "name": match.get('name'),
+                "status": match['status'],
+                "started_at": format_datetime(match.get('started_at')),
+                "completed_at": format_datetime(match.get('completed_at')),
+                "created_at": format_datetime(match.get('created_at')),
+                "updated_at": format_datetime(match.get('updated_at'))
+            },
+            "players": [
+                {
+                    "user_id": p['user_id'],
+                    "total_strokes": p.get('total_strokes', 0),
+                    "starting_hole_number": p.get('starting_hole_number', 1)
+                }
+                for p in players
+            ],
+            "scores": [
+                {
+                    "hole_id": s['hole_id'],
+                    "hole_number": s.get('hole_number'),
+                    "par": s.get('par'),
+                    "strokes": s['strokes'],
+                    "completed_at": format_datetime(s.get('completed_at'))
+                }
+                for s in scores
+            ],
+            "statistics": {
+                "total_holes_played": total_holes,
+                "average_strokes_per_hole": round(average_strokes, 2) if total_holes > 0 else 0,
+                "best_hole": best_hole,
+                "worst_hole": worst_hole,
+                "total_strokes": total_strokes
+            }
+        }
+        
+        return jsonify(response), 200
+        
+    except Exception as e:
+        return jsonify({
+            "error": "Error al obtener los detalles del partido",
             "details": str(e)
         }), 500
 

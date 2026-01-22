@@ -8,6 +8,9 @@ Orden de ejecución:
 2. migrations_auth.py - Crea tablas de autenticación (modifica user, crea auth_tokens)
 3. migrations.py - Crea tablas de golf (golf_course, hole, hole_point, obstacle, optimal_shot, strategic_point)
 4. migrations_match.py - Crea tablas de partidos (match, match_player, match_hole_score, match_stroke)
+5. migrations_social.py - Crea tablas sociales (user_follow)
+6. migrations_news.py - Crea tablas de noticias (news_article, post, rss_feed_source)
+7. migrations_admin.py - Crea tablas de administración (user_role, feature_flag, user_feature_access)
 """
 import sys
 from pathlib import Path
@@ -22,6 +25,9 @@ from kdi_back.infrastructure.db import migrations_player
 from kdi_back.infrastructure.db import migrations_auth
 from kdi_back.infrastructure.db import migrations
 from kdi_back.infrastructure.db import migrations_match
+from kdi_back.infrastructure.db import migrations_social
+from kdi_back.infrastructure.db import migrations_news
+from kdi_back.infrastructure.db import migrations_admin
 from kdi_back.infrastructure.config import settings
 
 
@@ -92,6 +98,36 @@ def run_all_migrations(recreate=False):
         return False
     print("✓ Tablas de partidos creadas correctamente")
     
+    # Paso 5: Migraciones sociales (depende de 'user')
+    print("\n" + "=" * 70)
+    print("PASO 5: Migraciones Sociales")
+    print("=" * 70)
+    print("Creando: user_follow")
+    if not migrations_social.create_all_social_tables(recreate=recreate):
+        print("\n✗ Error al crear las tablas sociales")
+        return False
+    print("✓ Tablas sociales creadas correctamente")
+    
+    # Paso 6: Migraciones de noticias (depende de 'user' y opcionalmente 'match')
+    print("\n" + "=" * 70)
+    print("PASO 6: Migraciones de Noticias")
+    print("=" * 70)
+    print("Creando: news_article, post, rss_feed_source")
+    if not migrations_news.create_all_news_tables(recreate=recreate):
+        print("\n✗ Error al crear las tablas de noticias")
+        return False
+    print("✓ Tablas de noticias creadas correctamente")
+    
+    # Paso 7: Migraciones de administración (depende de 'user')
+    print("\n" + "=" * 70)
+    print("PASO 7: Migraciones de Administración")
+    print("=" * 70)
+    print("Creando: user_role, feature_flag, user_feature_access")
+    if not migrations_admin.create_all_admin_tables(recreate=recreate):
+        print("\n✗ Error al crear las tablas de administración")
+        return False
+    print("✓ Tablas de administración creadas correctamente")
+    
     print("\n" + "=" * 70)
     print("✓ TODAS LAS MIGRACIONES COMPLETADAS EXITOSAMENTE")
     print("=" * 70)
@@ -111,6 +147,13 @@ def run_all_migrations(recreate=False):
     print("  ✓ match_player")
     print("  ✓ match_hole_score")
     print("  ✓ match_stroke")
+    print("  ✓ user_follow")
+    print("  ✓ news_article")
+    print("  ✓ post")
+    print("  ✓ rss_feed_source")
+    print("  ✓ user_role")
+    print("  ✓ feature_flag")
+    print("  ✓ user_feature_access")
     print("=" * 70)
     
     return True

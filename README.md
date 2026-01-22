@@ -31,20 +31,84 @@ kdi_back/
 
 ## Requisitos
 
-- Python 3.8 o superior
+- Python 3.10 o superior (requerido por strands-agents y langchain)
+- [uv](https://github.com/astral-sh/uv) (gestor de entornos virtuales y paquetes Python)
 - Credenciales de AWS configuradas en un archivo `.env`
 - PostgreSQL con extensión PostGIS instalada
 
 ## Instalación
 
-1. Instalar las dependencias:
-```bash
-pip install -r requirements.txt
+### Instalación de uv
+
+Si no tienes `uv` instalado, puedes instalarlo con:
+
+**Windows (PowerShell):**
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-O usando el proyecto como paquete:
+**Linux/macOS:**
 ```bash
-pip install -e .
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+O usando pip:
+```bash
+pip install uv
+```
+
+### Configuración del entorno virtual con uv
+
+1. **Crear y activar el entorno virtual:**
+```bash
+# Crear el entorno virtual (se crea en .venv/)
+uv venv
+
+# Activar el entorno virtual
+# Windows (PowerShell):
+.\.venv\Scripts\Activate.ps1
+# Windows (CMD):
+.\.venv\Scripts\activate.bat
+# Linux/macOS:
+source .venv/bin/activate
+```
+
+2. **Instalar las dependencias:**
+```bash
+# Opción 1: Sincronizar desde pyproject.toml (recomendado)
+uv sync
+
+# Opción 2: Instalar desde requirements.txt
+uv pip install -r requirements.txt
+
+# Opción 3: Instalar el proyecto en modo desarrollo
+uv pip install -e .
+```
+
+### Migración desde venv tradicional
+
+Si ya tenías un entorno virtual creado con `venv` o `virtualenv`:
+
+1. **Eliminar el entorno virtual antiguo:**
+```bash
+# Asegúrate de desactivar el entorno virtual primero
+deactivate
+
+# Eliminar el directorio .venv
+Remove-Item -Recurse -Force .venv  # PowerShell
+# o
+rm -rf .venv  # Linux/macOS
+```
+
+2. **Crear nuevo entorno con uv:**
+```bash
+uv venv
+```
+
+3. **Activar y sincronizar dependencias:**
+```bash
+.\.venv\Scripts\Activate.ps1  # Windows PowerShell
+uv sync
 ```
 
 ## Configuración
@@ -347,7 +411,12 @@ https://geojson.io/#new&map=18.09/40.444619/-3.871407
 
 
 KDI_BACK (LOCAL)
-.\.venv\Scripts\activate
+# Activar entorno virtual con uv
+.\.venv\Scripts\Activate.ps1  # Windows PowerShell
+# o
+source .venv/bin/activate  # Linux/macOS
+
+# Ejecutar servidor de desarrollo
 python .\scripts\run_dev.py
 -- Si quiero desplegar en local apuntando a la BBDD de PRE, hay que modificar el fichero .env
 

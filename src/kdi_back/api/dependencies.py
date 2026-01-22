@@ -14,6 +14,12 @@ from kdi_back.infrastructure.db.repositories.golf_repository_sql import GolfRepo
 from kdi_back.domain.services.auth_service import AuthService
 from kdi_back.infrastructure.db.repositories.auth_repository_sql import AuthRepositorySQL
 from kdi_back.domain.services.voice_service import VoiceService
+from kdi_back.domain.services.social_service import SocialService
+from kdi_back.infrastructure.db.repositories.social_repository_sql import SocialRepositorySQL
+from kdi_back.domain.services.news_service import NewsService
+from kdi_back.infrastructure.db.repositories.news_repository_sql import NewsRepositorySQL
+from kdi_back.domain.services.admin_service import AdminService
+from kdi_back.infrastructure.db.repositories.admin_repository_sql import AdminRepositorySQL
 
 
 def get_golf_service() -> GolfService:
@@ -72,4 +78,37 @@ def get_voice_service() -> VoiceService:
     match_service = get_match_service()
     player_service = get_player_service()
     return VoiceService(golf_service, match_service, player_service)
+
+
+def get_social_service() -> SocialService:
+    """
+    Factory function para crear el servicio de funcionalidades sociales con sus dependencias.
+    
+    Returns:
+        Instancia de SocialService configurada con el repositorio SQL
+    """
+    social_repository = SocialRepositorySQL()
+    return SocialService(social_repository)
+
+
+def get_news_service() -> NewsService:
+    """
+    Factory function para crear el servicio de noticias con sus dependencias.
+    
+    Returns:
+        Instancia de NewsService configurada con el repositorio SQL
+    """
+    news_repository = NewsRepositorySQL()
+    return NewsService(news_repository)
+
+
+def get_admin_service() -> AdminService:
+    """
+    Factory function para crear el servicio de administración con sus dependencias.
+    
+    Returns:
+        Instancia de AdminService configurada con el repositorio SQL
+    """
+    admin_repository = AdminRepositorySQL()
+    return AdminService(admin_repository)
 

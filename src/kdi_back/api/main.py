@@ -1,12 +1,31 @@
 # -*- coding: utf-8 -*-
 """Main Flask application"""
 from flask import Flask, jsonify
+from flask_cors import CORS
 from werkzeug.exceptions import BadRequest
 from kdi_back.infrastructure.config import settings
 from kdi_back.infrastructure.db.database import init_database, Database
-from kdi_back.api.routes import health, weather, golf, player, match, auth, game
+from kdi_back.api.routes import health, weather, golf, player, match, auth, game, social, news, admin
 
 app = Flask(__name__)
+
+# Configurar CORS para permitir peticiones desde el frontend web
+# En desarrollo, permitir localhost en diferentes puertos
+CORS(app, resources={
+    r"/*": {
+        "origins": [
+            "http://localhost:3000",
+            "http://localhost:3001",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:3001",
+            "http://192.168.1.37:3000",
+            "http://192.168.1.37:3001",
+        ],
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "credentials": True
+    }
+})
 
 # Handler global para errores de parsing JSON
 @app.errorhandler(BadRequest)
@@ -35,6 +54,9 @@ app.register_blueprint(player.player_bp)
 app.register_blueprint(match.match_bp)
 app.register_blueprint(auth.auth_bp)
 app.register_blueprint(game.game_bp)
+app.register_blueprint(social.social_bp)
+app.register_blueprint(news.news_bp)
+app.register_blueprint(admin.admin_bp)
 
 
 def create_app():

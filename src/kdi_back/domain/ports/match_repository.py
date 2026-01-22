@@ -190,16 +190,26 @@ class MatchRepository(ABC):
         pass
     
     @abstractmethod
-    def get_matches_by_player(self, user_id: int, status: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_matches_by_player(self, user_id: int, status: Optional[str] = None,
+                              course_id: Optional[int] = None,
+                              start_date: Optional[str] = None,
+                              end_date: Optional[str] = None,
+                              limit: Optional[int] = None,
+                              offset: Optional[int] = None) -> Dict[str, Any]:
         """
-        Obtiene todos los partidos de un jugador.
+        Obtiene los partidos de un jugador con filtros y paginación.
         
         Args:
             user_id: ID del usuario/jugador
             status: Filtro opcional por estado (in_progress, completed, cancelled)
+            course_id: Filtro opcional por campo de golf
+            start_date: Filtro opcional por fecha de inicio (formato YYYY-MM-DD)
+            end_date: Filtro opcional por fecha de fin (formato YYYY-MM-DD)
+            limit: Límite de resultados por página (opcional)
+            offset: Desplazamiento para paginación (opcional)
             
         Returns:
-            Lista de diccionarios con información de los partidos
+            Diccionario con 'matches' (lista de partidos) y 'total' (total de partidos)
         """
         pass
     
@@ -357,18 +367,6 @@ class MatchRepository(ABC):
             
         Returns:
             True si se actualizó correctamente, False si no
-        """
-        pass
-        """
-        Obtiene todos los golpes de un jugador en un hoyo, ordenados por fecha de creación.
-        
-        Args:
-            match_id: ID del partido
-            user_id: ID del usuario/jugador
-            hole_id: ID del hoyo
-            
-        Returns:
-            Lista de diccionarios con información de los golpes, ordenados por created_at ASC
         """
         pass
 
