@@ -410,44 +410,84 @@ class MatchRepositorySQL(MatchRepository):
             results = cur.fetchall()
             return [dict(row) for row in results]
     
-    def get_matches_by_player(self, user_id: int, status: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Obtiene todos los partidos de un jugador."""
+    def get_matches_by_player(self, user_id: int, status: Optional[str] = None,
+                              course_id: Optional[int] = None,
+                              start_date: Optional[str] = None,
+                              end_date: Optional[str] = None,
+                              limit: Optional[int] = None,
+                              offset: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Obtiene los partidos de un jugador con filtros y paginación.
+        
+        Returns:
+            Diccionario con 'matches' (lista de partidos) y 'total' (total de partidos)
+        """
         with Database.get_cursor(commit=False) as (conn, cur):
-            if status:
-                cur.execute("""
-                    SELECT DISTINCT
-                        m.id,
-                        m.course_id,
-                        m.name,
-                        m.status,
-                        m.started_at,
-                        m.completed_at,
-                        m.created_at,
-                        m.updated_at
-                    FROM match m
-                    JOIN match_player mp ON m.id = mp.match_id
-                    WHERE mp.user_id = %s AND m.status = %s
-                    ORDER BY m.started_at DESC;
-                """, (user_id, status))
-            else:
-                cur.execute("""
-                    SELECT DISTINCT
-                        m.id,
-                        m.course_id,
-                        m.name,
-                        m.status,
-                        m.started_at,
-                        m.completed_at,
-                        m.created_at,
-                        m.updated_at
-                    FROM match m
-                    JOIN match_player mp ON m.id = mp.match_id
-                    WHERE mp.user_id = %s
-                    ORDER BY m.started_at DESC;
-                """, (user_id,))
+            # Construir la consulta base
+            where_conditions = ["mp.user_id = %s"]
+            query_params = [user_id]
             
+            if status:
+                where_conditions.append("m.status = %s")
+                query_params.append(status)
+            
+            if course_id:
+                where_conditions.append("m.course_id = %s")
+                query_params.append(course_id)
+            
+            if start_date:
+                where_conditions.append("DATE(m.started_at) >= %s")
+                query_params.append(start_date)
+            
+            if end_date:
+                where_conditions.append("DATE(m.started_at) <= %s")
+                query_params.append(end_date)
+            
+            where_clause = " AND ".join(where_conditions)
+            
+            # Consulta para obtener el total
+            count_query = f"""
+                SELECT COUNT(DISTINCT m.id) as total
+                FROM match m
+                JOIN match_player mp ON m.id = mp.match_id
+                WHERE {where_clause};
+            """
+            cur.execute(count_query, query_params)
+            total_result = cur.fetchone()
+            total = total_result['total'] if total_result else 0
+            
+            # Consulta para obtener los partidos con paginación
+            query = f"""
+                SELECT DISTINCT
+                    m.id,
+                    m.course_id,
+                    m.name,
+                    m.status,
+                    m.started_at,
+                    m.completed_at,
+                    m.created_at,
+                    m.updated_at
+                FROM match m
+                JOIN match_player mp ON m.id = mp.match_id
+                WHERE {where_clause}
+                ORDER BY m.started_at DESC NULLS LAST, m.created_at DESC
+            """
+            
+            if limit:
+                query += f" LIMIT {limit}"
+                if offset:
+                    query += f" OFFSET {offset}"
+            
+            cur.execute(query, query_params)
             results = cur.fetchall()
-            return [dict(row) for row in results]
+            matches = [dict(row) for row in results]
+            
+            return {
+                'matches': matches,
+                'total': total,
+                'limit': limit,
+                'offset': offset or 0
+            }
     
     def create_stroke(self, match_id: int, user_id: int, hole_id: int, stroke_number: int,
                      ball_start_latitude: float, ball_start_longitude: float,

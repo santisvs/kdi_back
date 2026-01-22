@@ -8,7 +8,10 @@ Este servicio actúa como router/dispatcher que:
 3. Formatea la respuesta en lenguaje natural
 """
 from typing import Optional, Dict, Any, List
-from kdi_back.infrastructure.agents.intent_classifier_agent import classify_intent
+# Usando agente LangChain (Claude 3 Haiku)
+from kdi_back.infrastructure.agents.intent_classifier_agent_langchain import classify_intent
+# Agente legacy de Strands (mantenido pero no usado):
+# from kdi_back.infrastructure.agents.intent_classifier_agent import classify_intent as classify_intent_legacy
 from kdi_back.domain.services.golf_service import GolfService
 from kdi_back.domain.services.match_service import MatchService
 from kdi_back.domain.services.player_service import PlayerService
@@ -1712,8 +1715,11 @@ class VoiceService:
         Por ahora, retorna un mensaje indicando que debe usar el endpoint de clima.
         """
         # Importar aquí para evitar dependencia circular
+        # Usando agente LangChain (Claude 3 Haiku)
         try:
-            from kdi_back.infrastructure.agents.weather_agent import get_weather_response
+            from kdi_back.infrastructure.agents.weather_agent_langchain import get_weather_response
+            # Agente legacy de Strands (mantenido pero no usado):
+            # from kdi_back.infrastructure.agents.weather_agent import get_weather_response as get_weather_response_legacy
             
             # Construir query de clima basada en la ubicación
             weather_query = f"¿Qué tiempo hace en las coordenadas {latitude}, {longitude}?"

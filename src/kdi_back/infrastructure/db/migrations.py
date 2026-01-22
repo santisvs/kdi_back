@@ -57,6 +57,18 @@ def create_golf_course_table(drop_if_exists=False):
             
             print(f"✓ PostGIS disponible: versión {postgis_version}")
             
+            # Verificar si la tabla ya existe
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'golf_course'
+                );
+            """)
+            if cur.fetchone()['exists']:
+                print("✓ Tabla 'golf_course' ya existe, omitiendo creación")
+                return True
+            
             # Crear la tabla golf_course
             print("Creando tabla 'golf_course'...")
             cur.execute("""
@@ -70,7 +82,7 @@ def create_golf_course_table(drop_if_exists=False):
             # Crear índice espacial para optimizar consultas geoespaciales
             print("Creando índice espacial en 'location'...")
             cur.execute("""
-                CREATE INDEX idx_golf_course_location 
+                CREATE INDEX IF NOT EXISTS idx_golf_course_location 
                 ON golf_course USING GIST(location);
             """)
             
@@ -132,6 +144,18 @@ def create_hole_table(drop_if_exists=False):
                 postgis_version = check_postgis()
             print(f"✓ PostGIS disponible: versión {postgis_version}")
 
+            # Verificar si la tabla ya existe
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'hole'
+                );
+            """)
+            if cur.fetchone()['exists']:
+                print("✓ Tabla 'hole' ya existe, omitiendo creación")
+                return True
+
             print("Creando tabla 'hole'...")
             cur.execute("""
                 CREATE TABLE hole (
@@ -147,18 +171,38 @@ def create_hole_table(drop_if_exists=False):
             """)
 
             print("Creando índices espaciales en 'hole'...")
+            # Los índices GIST no pueden usar IF NOT EXISTS directamente
+            # Verificamos si existen antes de crearlos
             cur.execute("""
-                CREATE INDEX idx_hole_fairway_polygon 
-                ON hole USING GIST(fairway_polygon);
+                SELECT indexname 
+                FROM pg_indexes 
+                WHERE tablename = 'hole' AND indexname = 'idx_hole_fairway_polygon';
             """)
+            if not cur.fetchone():
+                cur.execute("""
+                    CREATE INDEX idx_hole_fairway_polygon 
+                    ON hole USING GIST(fairway_polygon);
+                """)
             cur.execute("""
-                CREATE INDEX idx_hole_green_polygon 
-                ON hole USING GIST(green_polygon);
+                SELECT indexname 
+                FROM pg_indexes 
+                WHERE tablename = 'hole' AND indexname = 'idx_hole_green_polygon';
             """)
+            if not cur.fetchone():
+                cur.execute("""
+                    CREATE INDEX idx_hole_green_polygon 
+                    ON hole USING GIST(green_polygon);
+                """)
             cur.execute("""
-                CREATE INDEX idx_hole_bbox_polygon 
-                ON hole USING GIST(bbox_polygon);
+                SELECT indexname 
+                FROM pg_indexes 
+                WHERE tablename = 'hole' AND indexname = 'idx_hole_bbox_polygon';
             """)
+            if not cur.fetchone():
+                cur.execute("""
+                    CREATE INDEX idx_hole_bbox_polygon 
+                    ON hole USING GIST(bbox_polygon);
+                """)
 
             print("✓ Tabla 'hole' creada exitosamente")
             return True
@@ -204,6 +248,18 @@ def create_hole_point_table(drop_if_exists=False):
                 postgis_version = check_postgis()
             print(f"✓ PostGIS disponible: versión {postgis_version}")
 
+            # Verificar si la tabla ya existe
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'hole_point'
+                );
+            """)
+            if cur.fetchone()['exists']:
+                print("✓ Tabla 'hole_point' ya existe, omitiendo creación")
+                return True
+
             print("Creando tabla 'hole_point'...")
             cur.execute("""
                 CREATE TABLE hole_point (
@@ -218,9 +274,15 @@ def create_hole_point_table(drop_if_exists=False):
 
             print("Creando índice espacial en 'position' de 'hole_point'...")
             cur.execute("""
-                CREATE INDEX idx_hole_point_position 
-                ON hole_point USING GIST(position);
+                SELECT indexname 
+                FROM pg_indexes 
+                WHERE tablename = 'hole_point' AND indexname = 'idx_hole_point_position';
             """)
+            if not cur.fetchone():
+                cur.execute("""
+                    CREATE INDEX idx_hole_point_position 
+                    ON hole_point USING GIST(position);
+                """)
 
             print("✓ Tabla 'hole_point' creada exitosamente")
             return True
@@ -266,6 +328,18 @@ def create_obstacle_table(drop_if_exists=False):
                 postgis_version = check_postgis()
             print(f"✓ PostGIS disponible: versión {postgis_version}")
 
+            # Verificar si la tabla ya existe
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'obstacle'
+                );
+            """)
+            if cur.fetchone()['exists']:
+                print("✓ Tabla 'obstacle' ya existe, omitiendo creación")
+                return True
+
             print("Creando tabla 'obstacle'...")
             cur.execute("""
                 CREATE TABLE obstacle (
@@ -281,9 +355,15 @@ def create_obstacle_table(drop_if_exists=False):
 
             print("Creando índice espacial en 'shape' de 'obstacle'...")
             cur.execute("""
-                CREATE INDEX idx_obstacle_shape 
-                ON obstacle USING GIST(shape);
+                SELECT indexname 
+                FROM pg_indexes 
+                WHERE tablename = 'obstacle' AND indexname = 'idx_obstacle_shape';
             """)
+            if not cur.fetchone():
+                cur.execute("""
+                    CREATE INDEX idx_obstacle_shape 
+                    ON obstacle USING GIST(shape);
+                """)
 
             print("✓ Tabla 'obstacle' creada exitosamente")
             return True
@@ -329,6 +409,18 @@ def create_optimal_shot_table(drop_if_exists=False):
                 postgis_version = check_postgis()
             print(f"✓ PostGIS disponible: versión {postgis_version}")
 
+            # Verificar si la tabla ya existe
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'optimal_shot'
+                );
+            """)
+            if cur.fetchone()['exists']:
+                print("✓ Tabla 'optimal_shot' ya existe, omitiendo creación")
+                return True
+
             print("Creando tabla 'optimal_shot'...")
             cur.execute("""
                 CREATE TABLE optimal_shot (
@@ -341,9 +433,15 @@ def create_optimal_shot_table(drop_if_exists=False):
 
             print("Creando índice espacial en 'path' de 'optimal_shot'...")
             cur.execute("""
-                CREATE INDEX idx_optimal_shot_path 
-                ON optimal_shot USING GIST(path);
+                SELECT indexname 
+                FROM pg_indexes 
+                WHERE tablename = 'optimal_shot' AND indexname = 'idx_optimal_shot_path';
             """)
+            if not cur.fetchone():
+                cur.execute("""
+                    CREATE INDEX idx_optimal_shot_path 
+                    ON optimal_shot USING GIST(path);
+                """)
 
             print("✓ Tabla 'optimal_shot' creada exitosamente")
             return True
@@ -398,6 +496,18 @@ def create_strategic_point_table(drop_if_exists=False):
                 postgis_version = check_postgis()
             print(f"✓ PostGIS disponible: versión {postgis_version}")
 
+            # Verificar si la tabla ya existe
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'strategic_point'
+                );
+            """)
+            if cur.fetchone()['exists']:
+                print("✓ Tabla 'strategic_point' ya existe, omitiendo creación")
+                return True
+
             print("Creando tabla 'strategic_point'...")
             cur.execute("""
                 CREATE TABLE strategic_point (
@@ -415,19 +525,25 @@ def create_strategic_point_table(drop_if_exists=False):
 
             print("Creando índice espacial en 'position' de 'strategic_point'...")
             cur.execute("""
-                CREATE INDEX idx_strategic_point_position 
-                ON strategic_point USING GIST(position);
+                SELECT indexname 
+                FROM pg_indexes 
+                WHERE tablename = 'strategic_point' AND indexname = 'idx_strategic_point_position';
             """)
+            if not cur.fetchone():
+                cur.execute("""
+                    CREATE INDEX idx_strategic_point_position 
+                    ON strategic_point USING GIST(position);
+                """)
 
             print("Creando índice en 'hole_id' de 'strategic_point'...")
             cur.execute("""
-                CREATE INDEX idx_strategic_point_hole_id 
+                CREATE INDEX IF NOT EXISTS idx_strategic_point_hole_id 
                 ON strategic_point(hole_id);
             """)
 
             print("Creando índice en 'type' de 'strategic_point'...")
             cur.execute("""
-                CREATE INDEX idx_strategic_point_type 
+                CREATE INDEX IF NOT EXISTS idx_strategic_point_type 
                 ON strategic_point(type);
             """)
 

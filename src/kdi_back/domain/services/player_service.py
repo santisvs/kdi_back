@@ -119,6 +119,9 @@ class PlayerService:
                 phone=phone,
                 date_of_birth=date_of_birth
             )
+            
+            # Asignar rol 'player' por defecto al nuevo usuario
+            self._assign_default_role(user['id'])
         
         # Crear el perfil de jugador (ya sea para usuario nuevo o existente)
         player_profile = self.player_repository.create_player_profile(
@@ -294,4 +297,271 @@ class PlayerService:
         valid_genders = ['male', 'female']
         if gender.lower() not in valid_genders:
             raise ValueError(f"El género debe ser uno de: {', '.join(valid_genders)}")
+    
+    def update_user_data(self, user_id: int, email: Optional[str] = None,
+                        username: Optional[str] = None, first_name: Optional[str] = None,
+                        last_name: Optional[str] = None, phone: Optional[str] = None,
+                        date_of_birth: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Actualiza los datos de un usuario.
+        
+        Args:
+            user_id: ID del usuario a actualizar
+            email: Nuevo email (opcional)
+            username: Nuevo username (opcional)
+            first_name: Nuevo nombre (opcional)
+            last_name: Nuevo apellido (opcional)
+            phone: Nuevo teléfono (opcional)
+            date_of_birth: Nueva fecha de nacimiento (opcional, formato YYYY-MM-DD)
+            
+        Returns:
+            Diccionario con la información del usuario actualizado
+            
+        Raises:
+            ValueError: Si los datos no son válidos o el usuario no existe
+        """
+        # Validaciones de negocio
+        if email is not None:
+            self._validate_email(email)
+        
+        if username is not None:
+            self._validate_username(username)
+        
+        if date_of_birth is not None:
+            self._validate_date_of_birth(date_of_birth)
+        
+        # Actualizar el usuario
+        return self.player_repository.update_user_data(
+            user_id=user_id,
+            email=email,
+            username=username,
+            first_name=first_name,
+            last_name=last_name,
+            phone=phone,
+            date_of_birth=date_of_birth
+        )
+    
+    def update_player_profile(self, user_id: int, handicap: Optional[float] = None,
+                            gender: Optional[str] = None,
+                            preferred_hand: Optional[str] = None,
+                            years_playing: Optional[int] = None,
+                            skill_level: Optional[str] = None,
+                            notes: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Actualiza el perfil de jugador de un usuario.
+        
+        Args:
+            user_id: ID del usuario
+            handicap: Nuevo handicap (opcional)
+            gender: Nuevo género (opcional)
+            preferred_hand: Nueva mano preferida (opcional)
+            years_playing: Nuevos años jugando (opcional)
+            skill_level: Nuevo nivel de habilidad (opcional)
+            notes: Nuevas notas (opcional)
+            
+        Returns:
+            Diccionario con la información del perfil actualizado
+            
+        Raises:
+            ValueError: Si los datos no son válidos o el usuario no tiene perfil
+        """
+        # Validaciones de negocio
+        if handicap is not None:
+            self._validate_handicap(handicap)
+        
+        if gender is not None:
+            self._validate_gender(gender)
+        
+        if preferred_hand is not None:
+            self._validate_preferred_hand(preferred_hand)
+        
+        if skill_level is not None:
+            self._validate_skill_level(skill_level)
+        
+        if years_playing is not None:
+            self._validate_years_playing(years_playing)
+        
+        # Actualizar el perfil
+        return self.player_repository.update_player_profile(
+            user_id=user_id,
+            handicap=handicap,
+            gender=gender,
+            preferred_hand=preferred_hand,
+            years_playing=years_playing,
+            skill_level=skill_level,
+            notes=notes
+        )
+    
+    def create_player_club(self, user_id: int, club_name: str,
+                          club_type: Optional[str] = None,
+                          average_distance_meters: Optional[float] = None,
+                          min_distance_meters: Optional[float] = None,
+                          max_distance_meters: Optional[float] = None,
+                          average_error_meters: Optional[float] = None) -> Dict[str, Any]:
+        """
+        Crea un nuevo palo personalizado para un jugador.
+        
+        Args:
+            user_id: ID del usuario
+            club_name: Nombre del palo (requerido)
+            club_type: Tipo del palo (opcional)
+            average_distance_meters: Distancia promedio en metros (opcional)
+            min_distance_meters: Distancia mínima en metros (opcional)
+            max_distance_meters: Distancia máxima en metros (opcional)
+            average_error_meters: Error promedio en metros (opcional)
+            
+        Returns:
+            Diccionario con la información del palo creado
+            
+        Raises:
+            ValueError: Si los datos no son válidos o el usuario no tiene perfil
+        """
+        # Validar que el usuario tiene perfil
+        player_profile = self.player_repository.get_player_profile_by_user_id(user_id)
+        if not player_profile:
+            raise ValueError(f"El usuario {user_id} no tiene un perfil de jugador")
+        
+        # Validar nombre del palo
+        if not club_name or not club_name.strip():
+            raise ValueError("El nombre del palo es requerido")
+        
+        # Validar distancias si se proporcionan
+        if average_distance_meters is not None and average_distance_meters < 0:
+            raise ValueError("La distancia promedio no puede ser negativa")
+        
+        if min_distance_meters is not None and min_distance_meters < 0:
+            raise ValueError("La distancia mínima no puede ser negativa")
+        
+        if max_distance_meters is not None and max_distance_meters < 0:
+            raise ValueError("La distancia máxima no puede ser negativa")
+        
+        if min_distance_meters is not None and max_distance_meters is not None:
+            if min_distance_meters > max_distance_meters:
+                raise ValueError("La distancia mínima no puede ser mayor que la máxima")
+        
+        if average_error_meters is not None and average_error_meters < 0:
+            raise ValueError("El error promedio no puede ser negativo")
+        
+        # Crear el palo
+        return self.player_repository.create_player_club(
+            player_profile_id=player_profile['id'],
+            club_name=club_name.strip(),
+            club_type=club_type,
+            average_distance_meters=average_distance_meters,
+            min_distance_meters=min_distance_meters,
+            max_distance_meters=max_distance_meters,
+            average_error_meters=average_error_meters
+        )
+    
+    def update_player_club(self, user_id: int, club_statistics_id: int,
+                          club_name: Optional[str] = None,
+                          club_type: Optional[str] = None,
+                          average_distance_meters: Optional[float] = None,
+                          min_distance_meters: Optional[float] = None,
+                          max_distance_meters: Optional[float] = None,
+                          average_error_meters: Optional[float] = None) -> Dict[str, Any]:
+        """
+        Actualiza un palo de un jugador.
+        
+        Args:
+            user_id: ID del usuario
+            club_statistics_id: ID de la estadística del palo
+            club_name: Nuevo nombre del palo (opcional)
+            club_type: Nuevo tipo del palo (opcional)
+            average_distance_meters: Nueva distancia promedio (opcional)
+            min_distance_meters: Nueva distancia mínima (opcional)
+            max_distance_meters: Nueva distancia máxima (opcional)
+            average_error_meters: Nuevo error promedio (opcional)
+            
+        Returns:
+            Diccionario con la información del palo actualizado
+            
+        Raises:
+            ValueError: Si los datos no son válidos o el palo no existe
+        """
+        # Validar que el usuario tiene perfil
+        player_profile = self.player_repository.get_player_profile_by_user_id(user_id)
+        if not player_profile:
+            raise ValueError(f"El usuario {user_id} no tiene un perfil de jugador")
+        
+        # Validar distancias si se proporcionan (mismas validaciones que en create)
+        if average_distance_meters is not None and average_distance_meters < 0:
+            raise ValueError("La distancia promedio no puede ser negativa")
+        
+        if min_distance_meters is not None and min_distance_meters < 0:
+            raise ValueError("La distancia mínima no puede ser negativa")
+        
+        if max_distance_meters is not None and max_distance_meters < 0:
+            raise ValueError("La distancia máxima no puede ser negativa")
+        
+        if min_distance_meters is not None and max_distance_meters is not None:
+            if min_distance_meters > max_distance_meters:
+                raise ValueError("La distancia mínima no puede ser mayor que la máxima")
+        
+        if average_error_meters is not None and average_error_meters < 0:
+            raise ValueError("El error promedio no puede ser negativo")
+        
+        # Actualizar el palo
+        return self.player_repository.update_player_club(
+            club_statistics_id=club_statistics_id,
+            player_profile_id=player_profile['id'],
+            club_name=club_name.strip() if club_name else None,
+            club_type=club_type,
+            average_distance_meters=average_distance_meters,
+            min_distance_meters=min_distance_meters,
+            max_distance_meters=max_distance_meters,
+            average_error_meters=average_error_meters
+        )
+    
+    def delete_player_club(self, user_id: int, club_statistics_id: int) -> None:
+        """
+        Elimina un palo de un jugador.
+        
+        Args:
+            user_id: ID del usuario
+            club_statistics_id: ID de la estadística del palo
+            
+        Raises:
+            ValueError: Si el usuario no tiene perfil o el palo no existe
+        """
+        # Validar que el usuario tiene perfil
+        player_profile = self.player_repository.get_player_profile_by_user_id(user_id)
+        if not player_profile:
+            raise ValueError(f"El usuario {user_id} no tiene un perfil de jugador")
+        
+        # Eliminar el palo
+        self.player_repository.delete_player_club(
+            club_statistics_id=club_statistics_id,
+            player_profile_id=player_profile['id']
+        )
+    
+    def _assign_default_role(self, user_id: int) -> None:
+        """
+        Asigna el rol 'player' por defecto a un usuario si no tiene rol asignado.
+        
+        Args:
+            user_id: ID del usuario
+        """
+        try:
+            from kdi_back.infrastructure.db.database import Database
+            import psycopg2
+            
+            with Database.get_cursor(commit=True) as (conn, cur):
+                # Verificar si el usuario ya tiene un rol
+                cur.execute("""
+                    SELECT role FROM user_role WHERE user_id = %s;
+                """, (user_id,))
+                result = cur.fetchone()
+                
+                # Solo asignar si no tiene rol
+                if not result:
+                    cur.execute("""
+                        INSERT INTO user_role (user_id, role)
+                        VALUES (%s, 'player')
+                        ON CONFLICT (user_id) DO NOTHING;
+                    """, (user_id,))
+        except Exception:
+            # Si hay error, no fallar la creación del usuario
+            # El script de migración puede asignar el rol después
+            pass
 

@@ -192,6 +192,18 @@ def create_auth_tokens_table(drop_if_exists=False):
             if not cur.fetchone()['exists']:
                 raise Exception("La tabla 'user' no existe. Créala primero.")
             
+            # Verificar si la tabla ya existe
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'auth_tokens'
+                );
+            """)
+            if cur.fetchone()['exists']:
+                print("✓ Tabla 'auth_tokens' ya existe, omitiendo creación")
+                return True
+            
             print("Creando tabla 'auth_tokens'...")
             cur.execute("""
                 CREATE TABLE auth_tokens (
@@ -206,21 +218,29 @@ def create_auth_tokens_table(drop_if_exists=False):
                 );
             """)
             
-            # Crear índices
+            # Crear índices (si no existen)
             print("Creando índices en 'auth_tokens'...")
             cur.execute("""
-                CREATE INDEX idx_auth_tokens_user_id ON auth_tokens(user_id);
+                CREATE INDEX IF NOT EXISTS idx_auth_tokens_user_id ON auth_tokens(user_id);
             """)
             cur.execute("""
-                CREATE INDEX idx_auth_tokens_token ON auth_tokens(token);
+                CREATE INDEX IF NOT EXISTS idx_auth_tokens_token ON auth_tokens(token);
             """)
             cur.execute("""
-                CREATE INDEX idx_auth_tokens_expires_at ON auth_tokens(expires_at);
+                CREATE INDEX IF NOT EXISTS idx_auth_tokens_expires_at ON auth_tokens(expires_at);
             """)
+            # El índice parcial con WHERE no puede usar IF NOT EXISTS directamente
+            # Verificamos si existe antes de crearlo
             cur.execute("""
-                CREATE INDEX idx_auth_tokens_active ON auth_tokens(user_id, is_revoked, expires_at) 
-                WHERE is_revoked = FALSE;
+                SELECT indexname 
+                FROM pg_indexes 
+                WHERE tablename = 'auth_tokens' AND indexname = 'idx_auth_tokens_active';
             """)
+            if not cur.fetchone():
+                cur.execute("""
+                    CREATE INDEX idx_auth_tokens_active ON auth_tokens(user_id, is_revoked, expires_at) 
+                    WHERE is_revoked = FALSE;
+                """)
             
             print("✓ Tabla 'auth_tokens' creada exitosamente")
             print("\nEstructura de la tabla:")

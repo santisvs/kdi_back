@@ -70,6 +70,9 @@ class AuthService:
             last_name=last_name
         )
         
+        # Asignar rol 'player' por defecto al nuevo usuario
+        self._assign_default_role(user['id'])
+        
         # Generar token JWT
         token = self._generate_token(user['id'], user['email'])
         
@@ -80,6 +83,7 @@ class AuthService:
                 "username": user['username'],
                 "first_name": user.get('first_name'),
                 "last_name": user.get('last_name'),
+                "role": "player",  # Nuevo usuario siempre es 'player'
             },
             "token": token
         }
@@ -114,6 +118,9 @@ class AuthService:
         # Generar token JWT
         token = self._generate_token(user['id'], user['email'])
         
+        # Obtener rol del usuario
+        role = self._get_user_role(user['id'])
+        
         return {
             "user": {
                 "id": user['id'],
@@ -121,6 +128,7 @@ class AuthService:
                 "username": user['username'],
                 "first_name": user.get('first_name'),
                 "last_name": user.get('last_name'),
+                "role": role or "player",  # Default a "player" si no tiene rol
             },
             "token": token
         }
@@ -181,9 +189,15 @@ class AuthService:
                 first_name=first_name,
                 last_name=last_name
             )
+            
+            # Asignar rol 'player' por defecto al nuevo usuario
+            self._assign_default_role(user['id'])
         
         # Generar token JWT
         token = self._generate_token(user['id'], user['email'])
+        
+        # Obtener rol del usuario (puede ser 'player' o 'admin' si ya tenía uno)
+        role = self._get_user_role(user['id'])
         
         return {
             "user": {
@@ -192,6 +206,7 @@ class AuthService:
                 "username": user['username'],
                 "first_name": user.get('first_name'),
                 "last_name": user.get('last_name'),
+                "role": role or "player",  # Default a "player" si no tiene rol
             },
             "token": token
         }
@@ -413,4 +428,57 @@ class AuthService:
         if len(username) > 50:
             username = username[:50]
         return username
+    
+    def _get_user_role(self, user_id: int) -> Optional[str]:
+        """
+        Obtiene el rol de un usuario desde la base de datos.
+        
+        Args:
+            user_id: ID del usuario
+        
+        Returns:
+            Rol del usuario ('admin' o 'player') o None si no tiene rol asignado
+        """
+        try:
+            from kdi_back.infrastructure.db.database import Database
+            import psycopg2
+            
+            with Database.get_cursor(commit=False) as (conn, cur):
+                cur.execute("""
+                    SELECT role FROM user_role WHERE user_id = %s;
+                """, (user_id,))
+                result = cur.fetchone()
+                return result['role'] if result else None
+        except Exception:
+            return None
+    
+    def _assign_default_role(self, user_id: int) -> None:
+        """
+        Asigna el rol 'player' por defecto a un usuario si no tiene rol asignado.
+        
+        Args:
+            user_id: ID del usuario
+        """
+        try:
+            from kdi_back.infrastructure.db.database import Database
+            import psycopg2
+            
+            with Database.get_cursor(commit=True) as (conn, cur):
+                # Verificar si el usuario ya tiene un rol
+                cur.execute("""
+                    SELECT role FROM user_role WHERE user_id = %s;
+                """, (user_id,))
+                result = cur.fetchone()
+                
+                # Solo asignar si no tiene rol
+                if not result:
+                    cur.execute("""
+                        INSERT INTO user_role (user_id, role)
+                        VALUES (%s, 'player')
+                        ON CONFLICT (user_id) DO NOTHING;
+                    """, (user_id,))
+        except Exception:
+            # Si hay error, no fallar el registro del usuario
+            # El script de migración puede asignar el rol después
+            pass
 

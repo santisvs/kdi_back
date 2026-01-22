@@ -37,8 +37,20 @@ def create_user_table(drop_if_exists=False):
         with Database.get_cursor(commit=True) as (conn, cur):
             if drop_if_exists:
                 print("Eliminando tabla 'user' si existe...")
-                cur.execute("DROP TABLE IF EXISTS user CASCADE;")
+                cur.execute("DROP TABLE IF EXISTS \"user\" CASCADE;")
                 print("Tabla 'user' eliminada (si existía)")
+
+            # Verificar si la tabla ya existe
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'user'
+                );
+            """)
+            if cur.fetchone()['exists']:
+                print("✓ Tabla 'user' ya existe, omitiendo creación")
+                return True
 
             print("Creando tabla 'user'...")
             cur.execute("""
@@ -117,6 +129,18 @@ def create_player_profile_table(drop_if_exists=False):
             if not cur.fetchone()['exists']:
                 raise Exception("La tabla 'user' no existe. Créala primero.")
 
+            # Verificar si la tabla ya existe
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'player_profile'
+                );
+            """)
+            if cur.fetchone()['exists']:
+                print("✓ Tabla 'player_profile' ya existe, omitiendo creación")
+                return True
+
             print("Creando tabla 'player_profile'...")
             cur.execute("""
                 CREATE TABLE player_profile (
@@ -133,10 +157,10 @@ def create_player_profile_table(drop_if_exists=False):
                 );
             """)
 
-            # Crear índice para búsquedas por usuario
+            # Crear índice para búsquedas por usuario (si no existe)
             print("Creando índice en 'player_profile'...")
             cur.execute("""
-                CREATE INDEX idx_player_profile_user_id ON player_profile(user_id);
+                CREATE INDEX IF NOT EXISTS idx_player_profile_user_id ON player_profile(user_id);
             """)
 
             print("✓ Tabla 'player_profile' creada exitosamente")
@@ -181,6 +205,18 @@ def create_golf_club_table(drop_if_exists=False):
                 cur.execute("DROP TABLE IF EXISTS golf_club CASCADE;")
                 print("Tabla 'golf_club' eliminada (si existía)")
 
+            # Verificar si la tabla ya existe
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'golf_club'
+                );
+            """)
+            if cur.fetchone()['exists']:
+                print("✓ Tabla 'golf_club' ya existe, omitiendo creación")
+                return True
+
             print("Creando tabla 'golf_club'...")
             cur.execute("""
                 CREATE TABLE golf_club (
@@ -195,13 +231,13 @@ def create_golf_club_table(drop_if_exists=False):
                 );
             """)
 
-            # Crear índices
+            # Crear índices (si no existen)
             print("Creando índices en 'golf_club'...")
             cur.execute("""
-                CREATE INDEX idx_golf_club_name ON golf_club(name);
+                CREATE INDEX IF NOT EXISTS idx_golf_club_name ON golf_club(name);
             """)
             cur.execute("""
-                CREATE INDEX idx_golf_club_type ON golf_club(type);
+                CREATE INDEX IF NOT EXISTS idx_golf_club_type ON golf_club(type);
             """)
 
             print("✓ Tabla 'golf_club' creada exitosamente")
@@ -266,6 +302,18 @@ def create_player_club_statistics_table(drop_if_exists=False):
             if not cur.fetchone()['exists']:
                 raise Exception("La tabla 'golf_club' no existe. Créala primero.")
 
+            # Verificar si la tabla ya existe
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'player_club_statistics'
+                );
+            """)
+            if cur.fetchone()['exists']:
+                print("✓ Tabla 'player_club_statistics' ya existe, omitiendo creación")
+                return True
+
             print("Creando tabla 'player_club_statistics'...")
             cur.execute("""
                 CREATE TABLE player_club_statistics (
@@ -284,16 +332,16 @@ def create_player_club_statistics_table(drop_if_exists=False):
                 );
             """)
 
-            # Crear índices para búsquedas frecuentes
+            # Crear índices para búsquedas frecuentes (si no existen)
             print("Creando índices en 'player_club_statistics'...")
             cur.execute("""
-                CREATE INDEX idx_player_club_stats_profile ON player_club_statistics(player_profile_id);
+                CREATE INDEX IF NOT EXISTS idx_player_club_stats_profile ON player_club_statistics(player_profile_id);
             """)
             cur.execute("""
-                CREATE INDEX idx_player_club_stats_club ON player_club_statistics(golf_club_id);
+                CREATE INDEX IF NOT EXISTS idx_player_club_stats_club ON player_club_statistics(golf_club_id);
             """)
             cur.execute("""
-                CREATE INDEX idx_player_club_stats_distance ON player_club_statistics(average_distance_meters);
+                CREATE INDEX IF NOT EXISTS idx_player_club_stats_distance ON player_club_statistics(average_distance_meters);
             """)
 
             print("✓ Tabla 'player_club_statistics' creada exitosamente")

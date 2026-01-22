@@ -440,4 +440,515 @@ class PlayerRepositorySQL(PlayerRepository):
                 
         except psycopg2.Error as e:
             raise ValueError(f"Error al actualizar estadísticas de palo: {e}")
+    
+    def update_user_data(self, user_id: int, email: Optional[str] = None,
+                        username: Optional[str] = None, first_name: Optional[str] = None,
+                        last_name: Optional[str] = None, phone: Optional[str] = None,
+                        date_of_birth: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Actualiza los datos de un usuario.
+        
+        Args:
+            user_id: ID del usuario a actualizar
+            email: Nuevo email (opcional)
+            username: Nuevo username (opcional)
+            first_name: Nuevo nombre (opcional)
+            last_name: Nuevo apellido (opcional)
+            phone: Nuevo teléfono (opcional)
+            date_of_birth: Nueva fecha de nacimiento (opcional, formato YYYY-MM-DD)
+            
+        Returns:
+            Diccionario con la información del usuario actualizado
+            
+        Raises:
+            ValueError: Si el usuario no existe o los datos no son válidos
+        """
+        try:
+            # Verificar que el usuario existe
+            user = self.get_user_by_id(user_id)
+            if not user:
+                raise ValueError(f"No existe un usuario con el ID: {user_id}")
+            
+            # Construir la consulta UPDATE dinámicamente
+            update_fields = []
+            update_values = []
+            
+            if email is not None:
+                update_fields.append("email = %s")
+                update_values.append(email.lower().strip())
+            
+            if username is not None:
+                update_fields.append("username = %s")
+                update_values.append(username.strip())
+            
+            if first_name is not None:
+                update_fields.append("first_name = %s")
+                update_values.append(first_name.strip() if first_name.strip() else None)
+            
+            if last_name is not None:
+                update_fields.append("last_name = %s")
+                update_values.append(last_name.strip() if last_name.strip() else None)
+            
+            if phone is not None:
+                update_fields.append("phone = %s")
+                update_values.append(phone.strip() if phone.strip() else None)
+            
+            if date_of_birth is not None:
+                update_fields.append("date_of_birth = %s")
+                update_values.append(date_of_birth if date_of_birth else None)
+            
+            if not update_fields:
+                # No hay campos para actualizar, retornar el usuario actual
+                return user
+            
+            # Agregar updated_at
+            update_fields.append("updated_at = CURRENT_TIMESTAMP")
+            
+            # Agregar user_id al final para el WHERE
+            update_values.append(user_id)
+            
+            with Database.get_cursor(commit=True) as (conn, cur):
+                query = f"""
+                    UPDATE "user"
+                    SET {', '.join(update_fields)}
+                    WHERE id = %s
+                    RETURNING id, email, username, first_name, last_name, phone, date_of_birth, created_at, updated_at;
+                """
+                cur.execute(query, update_values)
+                
+                result = cur.fetchone()
+                if result:
+                    return dict(result)
+                raise ValueError(f"Error al actualizar el usuario {user_id}")
+                
+        except psycopg2.IntegrityError as e:
+            if 'user_email_key' in str(e) or 'email' in str(e).lower():
+                raise ValueError(f"Ya existe un usuario con el email: {email}")
+            elif 'user_username_key' in str(e) or 'username' in str(e).lower():
+                raise ValueError(f"Ya existe un usuario con el username: {username}")
+            else:
+                raise ValueError(f"Error de integridad al actualizar el usuario: {e}")
+        except psycopg2.Error as e:
+            raise ValueError(f"Error al actualizar el usuario: {e}")
+    
+    def update_player_profile(self, user_id: int, handicap: Optional[float] = None,
+                            gender: Optional[str] = None,
+                            preferred_hand: Optional[str] = None,
+                            years_playing: Optional[int] = None,
+                            skill_level: Optional[str] = None,
+                            notes: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Actualiza el perfil de jugador de un usuario.
+        
+        Args:
+            user_id: ID del usuario
+            handicap: Nuevo handicap (opcional)
+            gender: Nuevo género (opcional)
+            preferred_hand: Nueva mano preferida (opcional)
+            years_playing: Nuevos años jugando (opcional)
+            skill_level: Nuevo nivel de habilidad (opcional)
+            notes: Nuevas notas (opcional)
+            
+        Returns:
+            Diccionario con la información del perfil actualizado
+            
+        Raises:
+            ValueError: Si el usuario no existe o no tiene perfil
+        """
+        try:
+            # Verificar que el usuario existe y tiene perfil
+            user = self.get_user_by_id(user_id)
+            if not user:
+                raise ValueError(f"No existe un usuario con el ID: {user_id}")
+            
+            player_profile = self.get_player_profile_by_user_id(user_id)
+            if not player_profile:
+                raise ValueError(f"El usuario {user_id} no tiene un perfil de jugador")
+            
+            # Normalizar valores si se proporcionan
+            if gender:
+                gender = gender.lower()
+            
+            if preferred_hand:
+                preferred_hand = preferred_hand.lower()
+            
+            if skill_level:
+                skill_level = skill_level.lower()
+            
+            # Construir la consulta UPDATE dinámicamente
+            update_fields = []
+            update_values = []
+            
+            if handicap is not None:
+                update_fields.append("handicap = %s")
+                update_values.append(handicap)
+            
+            if gender is not None:
+                update_fields.append("gender = %s")
+                update_values.append(gender if gender else None)
+            
+            if preferred_hand is not None:
+                update_fields.append("preferred_hand = %s")
+                update_values.append(preferred_hand if preferred_hand else None)
+            
+            if years_playing is not None:
+                update_fields.append("years_playing = %s")
+                update_values.append(years_playing)
+            
+            if skill_level is not None:
+                update_fields.append("skill_level = %s")
+                update_values.append(skill_level if skill_level else None)
+            
+            if notes is not None:
+                update_fields.append("notes = %s")
+                update_values.append(notes.strip() if notes.strip() else None)
+            
+            if not update_fields:
+                # No hay campos para actualizar, retornar el perfil actual
+                return player_profile
+            
+            # Agregar updated_at
+            update_fields.append("updated_at = CURRENT_TIMESTAMP")
+            
+            # Agregar user_id al final para el WHERE
+            update_values.append(user_id)
+            
+            with Database.get_cursor(commit=True) as (conn, cur):
+                query = f"""
+                    UPDATE player_profile
+                    SET {', '.join(update_fields)}
+                    WHERE user_id = %s
+                    RETURNING id, user_id, handicap, gender, preferred_hand, years_playing, skill_level, notes, created_at, updated_at;
+                """
+                cur.execute(query, update_values)
+                
+                result = cur.fetchone()
+                if result:
+                    return dict(result)
+                raise ValueError(f"Error al actualizar el perfil del usuario {user_id}")
+                
+        except psycopg2.Error as e:
+            raise ValueError(f"Error al actualizar el perfil de jugador: {e}")
+    
+    def create_player_club(self, player_profile_id: int, club_name: str,
+                          club_type: Optional[str] = None,
+                          average_distance_meters: Optional[float] = None,
+                          min_distance_meters: Optional[float] = None,
+                          max_distance_meters: Optional[float] = None,
+                          average_error_meters: Optional[float] = None) -> Dict[str, Any]:
+        """
+        Crea un nuevo palo personalizado para un jugador.
+        
+        Args:
+            player_profile_id: ID del perfil de jugador
+            club_name: Nombre del palo
+            club_type: Tipo del palo (opcional)
+            average_distance_meters: Distancia promedio en metros (opcional)
+            min_distance_meters: Distancia mínima en metros (opcional)
+            max_distance_meters: Distancia máxima en metros (opcional)
+            average_error_meters: Error promedio en metros (opcional)
+            
+        Returns:
+            Diccionario con la información del palo creado
+            
+        Raises:
+            ValueError: Si el perfil no existe o los datos no son válidos
+        """
+        try:
+            # Verificar que el perfil existe
+            with Database.get_cursor(commit=False) as (conn, cur):
+                cur.execute("""
+                    SELECT id FROM player_profile WHERE id = %s;
+                """, (player_profile_id,))
+                if not cur.fetchone():
+                    raise ValueError(f"No existe un perfil de jugador con ID: {player_profile_id}")
+            
+            # Buscar o crear el palo en golf_club
+            club = self.get_golf_club_by_name(club_name)
+            if not club:
+                # Crear un nuevo palo en golf_club
+                with Database.get_cursor(commit=True) as (conn, cur):
+                    # Normalizar tipo si se proporciona
+                    normalized_type = club_type.lower() if club_type else 'iron'
+                    if normalized_type not in ['driver', 'wood', 'hybrid', 'iron', 'wedge', 'putter']:
+                        normalized_type = 'iron'
+                    
+                    cur.execute("""
+                        INSERT INTO golf_club (name, type, number, description)
+                        VALUES (%s, %s, %s, %s)
+                        ON CONFLICT (name) DO UPDATE SET name = golf_club.name
+                        RETURNING id, name, type, number, description, created_at;
+                    """, (club_name, normalized_type, None, f"Palo personalizado: {club_name}"))
+                    
+                    result = cur.fetchone()
+                    club = dict(result)
+            
+            # Crear la estadística del palo para el jugador
+            with Database.get_cursor(commit=True) as (conn, cur):
+                cur.execute("""
+                    INSERT INTO player_club_statistics (
+                        player_profile_id,
+                        golf_club_id,
+                        average_distance_meters,
+                        min_distance_meters,
+                        max_distance_meters,
+                        average_error_meters,
+                        error_std_deviation,
+                        shots_recorded
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id, player_profile_id, golf_club_id, average_distance_meters,
+                              min_distance_meters, max_distance_meters, average_error_meters,
+                              error_std_deviation, shots_recorded;
+                """, (
+                    player_profile_id,
+                    club['id'],
+                    average_distance_meters,
+                    min_distance_meters,
+                    max_distance_meters,
+                    average_error_meters,
+                    (average_error_meters * 0.5) if average_error_meters else None,
+                    0  # shots_recorded inicialmente 0
+                ))
+                
+                result = cur.fetchone()
+                club_stat = dict(result)
+                
+                # Combinar información del palo y estadísticas
+                return {
+                    'id': club_stat['id'],
+                    'player_profile_id': club_stat['player_profile_id'],
+                    'golf_club_id': club_stat['golf_club_id'],
+                    'club_name': club['name'],
+                    'club_type': club['type'],
+                    'club_number': club.get('number'),
+                    'average_distance_meters': float(club_stat['average_distance_meters']) if club_stat['average_distance_meters'] else None,
+                    'min_distance_meters': float(club_stat['min_distance_meters']) if club_stat['min_distance_meters'] else None,
+                    'max_distance_meters': float(club_stat['max_distance_meters']) if club_stat['max_distance_meters'] else None,
+                    'average_error_meters': float(club_stat['average_error_meters']) if club_stat['average_error_meters'] else None,
+                    'error_std_deviation': float(club_stat['error_std_deviation']) if club_stat['error_std_deviation'] else None,
+                    'shots_recorded': club_stat['shots_recorded']
+                }
+                
+        except psycopg2.IntegrityError as e:
+            if 'player_club_statistics_player_profile_id_golf_club_id_key' in str(e):
+                raise ValueError(f"El jugador ya tiene un palo con el nombre '{club_name}'")
+            raise ValueError(f"Error de integridad al crear el palo: {e}")
+        except psycopg2.Error as e:
+            raise ValueError(f"Error al crear el palo: {e}")
+    
+    def update_player_club(self, club_statistics_id: int, player_profile_id: int,
+                          club_name: Optional[str] = None,
+                          club_type: Optional[str] = None,
+                          average_distance_meters: Optional[float] = None,
+                          min_distance_meters: Optional[float] = None,
+                          max_distance_meters: Optional[float] = None,
+                          average_error_meters: Optional[float] = None) -> Dict[str, Any]:
+        """
+        Actualiza un palo de un jugador.
+        
+        Args:
+            club_statistics_id: ID de la estadística del palo
+            player_profile_id: ID del perfil de jugador (para verificación)
+            club_name: Nuevo nombre del palo (opcional)
+            club_type: Nuevo tipo del palo (opcional)
+            average_distance_meters: Nueva distancia promedio (opcional)
+            min_distance_meters: Nueva distancia mínima (opcional)
+            max_distance_meters: Nueva distancia máxima (opcional)
+            average_error_meters: Nuevo error promedio (opcional)
+            
+        Returns:
+            Diccionario con la información del palo actualizado
+            
+        Raises:
+            ValueError: Si el palo no existe o no pertenece al jugador
+        """
+        try:
+            # Verificar que el palo existe y pertenece al jugador
+            club_stat = self.get_player_club_by_id(club_statistics_id, player_profile_id)
+            if not club_stat:
+                raise ValueError(f"No se encontró el palo con ID {club_statistics_id} para este jugador")
+            
+            # Actualizar el nombre/tipo del palo en golf_club si se proporciona
+            if club_name is not None or club_type is not None:
+                with Database.get_cursor(commit=True) as (conn, cur):
+                    update_fields = []
+                    update_values = []
+                    
+                    if club_name is not None:
+                        update_fields.append("name = %s")
+                        update_values.append(club_name)
+                    
+                    if club_type is not None:
+                        normalized_type = club_type.lower()
+                        if normalized_type not in ['driver', 'wood', 'hybrid', 'iron', 'wedge', 'putter']:
+                            normalized_type = 'iron'
+                        update_fields.append("type = %s")
+                        update_values.append(normalized_type)
+                    
+                    if update_fields:
+                        update_values.append(club_stat['golf_club_id'])
+                        query = f"""
+                            UPDATE golf_club
+                            SET {', '.join(update_fields)}
+                            WHERE id = %s;
+                        """
+                        cur.execute(query, update_values)
+            
+            # Actualizar las estadísticas del palo
+            with Database.get_cursor(commit=True) as (conn, cur):
+                update_fields = []
+                update_values = []
+                
+                if average_distance_meters is not None:
+                    update_fields.append("average_distance_meters = %s")
+                    update_values.append(average_distance_meters)
+                
+                if min_distance_meters is not None:
+                    update_fields.append("min_distance_meters = %s")
+                    update_values.append(min_distance_meters)
+                
+                if max_distance_meters is not None:
+                    update_fields.append("max_distance_meters = %s")
+                    update_values.append(max_distance_meters)
+                
+                if average_error_meters is not None:
+                    update_fields.append("average_error_meters = %s")
+                    update_values.append(average_error_meters)
+                    # Actualizar también error_std_deviation
+                    update_fields.append("error_std_deviation = %s")
+                    update_values.append(average_error_meters * 0.5)
+                
+                if not update_fields:
+                    # No hay campos para actualizar, retornar el palo actual
+                    return club_stat
+                
+                update_values.extend([club_statistics_id, player_profile_id])
+                query = f"""
+                    UPDATE player_club_statistics
+                    SET {', '.join(update_fields)}
+                    WHERE id = %s AND player_profile_id = %s
+                    RETURNING id, player_profile_id, golf_club_id, average_distance_meters,
+                              min_distance_meters, max_distance_meters, average_error_meters,
+                              error_std_deviation, shots_recorded;
+                """
+                cur.execute(query, update_values)
+                
+                result = cur.fetchone()
+                if not result:
+                    raise ValueError(f"Error al actualizar el palo {club_statistics_id}")
+                
+                updated_stat = dict(result)
+                
+                # Obtener información actualizada del palo
+                club = self.get_golf_club_by_name(club_name) if club_name else None
+                if not club:
+                    cur.execute("""
+                        SELECT id, name, type, number, description
+                        FROM golf_club
+                        WHERE id = %s;
+                    """, (updated_stat['golf_club_id'],))
+                    club_result = cur.fetchone()
+                    club = dict(club_result) if club_result else club_stat
+                
+                return {
+                    'id': updated_stat['id'],
+                    'player_profile_id': updated_stat['player_profile_id'],
+                    'golf_club_id': updated_stat['golf_club_id'],
+                    'club_name': club.get('name') if club else club_stat['club_name'],
+                    'club_type': club.get('type') if club else club_stat['club_type'],
+                    'club_number': club.get('number') if club else club_stat.get('club_number'),
+                    'average_distance_meters': float(updated_stat['average_distance_meters']) if updated_stat['average_distance_meters'] else None,
+                    'min_distance_meters': float(updated_stat['min_distance_meters']) if updated_stat['min_distance_meters'] else None,
+                    'max_distance_meters': float(updated_stat['max_distance_meters']) if updated_stat['max_distance_meters'] else None,
+                    'average_error_meters': float(updated_stat['average_error_meters']) if updated_stat['average_error_meters'] else None,
+                    'error_std_deviation': float(updated_stat['error_std_deviation']) if updated_stat['error_std_deviation'] else None,
+                    'shots_recorded': updated_stat['shots_recorded']
+                }
+                
+        except psycopg2.Error as e:
+            raise ValueError(f"Error al actualizar el palo: {e}")
+    
+    def delete_player_club(self, club_statistics_id: int, player_profile_id: int) -> None:
+        """
+        Elimina un palo de un jugador.
+        
+        Args:
+            club_statistics_id: ID de la estadística del palo
+            player_profile_id: ID del perfil de jugador (para verificación)
+            
+        Raises:
+            ValueError: Si el palo no existe o no pertenece al jugador
+        """
+        try:
+            # Verificar que el palo existe y pertenece al jugador
+            club_stat = self.get_player_club_by_id(club_statistics_id, player_profile_id)
+            if not club_stat:
+                raise ValueError(f"No se encontró el palo con ID {club_statistics_id} para este jugador")
+            
+            # Eliminar la estadística del palo
+            with Database.get_cursor(commit=True) as (conn, cur):
+                cur.execute("""
+                    DELETE FROM player_club_statistics
+                    WHERE id = %s AND player_profile_id = %s;
+                """, (club_statistics_id, player_profile_id))
+                
+                if cur.rowcount == 0:
+                    raise ValueError(f"No se pudo eliminar el palo {club_statistics_id}")
+                
+        except psycopg2.Error as e:
+            raise ValueError(f"Error al eliminar el palo: {e}")
+    
+    def get_player_club_by_id(self, club_statistics_id: int, player_profile_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Obtiene un palo específico de un jugador por su ID.
+        
+        Args:
+            club_statistics_id: ID de la estadística del palo
+            player_profile_id: ID del perfil de jugador
+            
+        Returns:
+            Diccionario con la información del palo si existe, None si no
+        """
+        try:
+            with Database.get_cursor(commit=False) as (conn, cur):
+                cur.execute("""
+                    SELECT 
+                        pcs.id,
+                        pcs.player_profile_id,
+                        pcs.golf_club_id,
+                        pcs.average_distance_meters,
+                        pcs.min_distance_meters,
+                        pcs.max_distance_meters,
+                        pcs.average_error_meters,
+                        pcs.error_std_deviation,
+                        pcs.shots_recorded,
+                        gc.name AS club_name,
+                        gc.type AS club_type,
+                        gc.number AS club_number
+                    FROM player_club_statistics pcs
+                    INNER JOIN golf_club gc ON pcs.golf_club_id = gc.id
+                    WHERE pcs.id = %s AND pcs.player_profile_id = %s;
+                """, (club_statistics_id, player_profile_id))
+                
+                result = cur.fetchone()
+                if result:
+                    return {
+                        'id': result['id'],
+                        'player_profile_id': result['player_profile_id'],
+                        'golf_club_id': result['golf_club_id'],
+                        'club_name': result['club_name'],
+                        'club_type': result['club_type'],
+                        'club_number': result['club_number'],
+                        'average_distance_meters': float(result['average_distance_meters']) if result['average_distance_meters'] else None,
+                        'min_distance_meters': float(result['min_distance_meters']) if result['min_distance_meters'] else None,
+                        'max_distance_meters': float(result['max_distance_meters']) if result['max_distance_meters'] else None,
+                        'average_error_meters': float(result['average_error_meters']) if result['average_error_meters'] else None,
+                        'error_std_deviation': float(result['error_std_deviation']) if result['error_std_deviation'] else None,
+                        'shots_recorded': result['shots_recorded']
+                    }
+                return None
+                
+        except psycopg2.Error as e:
+            raise ValueError(f"Error al obtener el palo: {e}")
 

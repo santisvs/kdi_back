@@ -52,6 +52,18 @@ def create_match_table(drop_if_exists=False):
             if not cur.fetchone()['exists']:
                 raise Exception("La tabla 'golf_course' no existe. Créala primero.")
 
+            # Verificar si la tabla ya existe
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'match'
+                );
+            """)
+            if cur.fetchone()['exists']:
+                print("✓ Tabla 'match' ya existe, omitiendo creación")
+                return True
+
             print("Creando tabla 'match'...")
             cur.execute("""
                 CREATE TABLE match (
@@ -66,16 +78,16 @@ def create_match_table(drop_if_exists=False):
                 );
             """)
 
-            # Crear índices
+            # Crear índices (si no existen)
             print("Creando índices en 'match'...")
             cur.execute("""
-                CREATE INDEX idx_match_course_id ON match(course_id);
+                CREATE INDEX IF NOT EXISTS idx_match_course_id ON match(course_id);
             """)
             cur.execute("""
-                CREATE INDEX idx_match_status ON match(status);
+                CREATE INDEX IF NOT EXISTS idx_match_status ON match(status);
             """)
             cur.execute("""
-                CREATE INDEX idx_match_started_at ON match(started_at);
+                CREATE INDEX IF NOT EXISTS idx_match_started_at ON match(started_at);
             """)
 
             print("✓ Tabla 'match' creada exitosamente")
@@ -140,6 +152,18 @@ def create_match_player_table(drop_if_exists=False):
             if not cur.fetchone()['exists']:
                 raise Exception("La tabla 'user' no existe. Créala primero.")
 
+            # Verificar si la tabla ya existe
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'match_player'
+                );
+            """)
+            if cur.fetchone()['exists']:
+                print("✓ Tabla 'match_player' ya existe, omitiendo creación")
+                return True
+
             print("Creando tabla 'match_player'...")
             cur.execute("""
                 CREATE TABLE match_player (
@@ -153,13 +177,13 @@ def create_match_player_table(drop_if_exists=False):
                 );
             """)
 
-            # Crear índices
+            # Crear índices (si no existen)
             print("Creando índices en 'match_player'...")
             cur.execute("""
-                CREATE INDEX idx_match_player_match_id ON match_player(match_id);
+                CREATE INDEX IF NOT EXISTS idx_match_player_match_id ON match_player(match_id);
             """)
             cur.execute("""
-                CREATE INDEX idx_match_player_user_id ON match_player(user_id);
+                CREATE INDEX IF NOT EXISTS idx_match_player_user_id ON match_player(user_id);
             """)
 
             print("✓ Tabla 'match_player' creada exitosamente")
@@ -223,6 +247,18 @@ def create_match_hole_score_table(drop_if_exists=False):
             if not cur.fetchone()['exists']:
                 raise Exception("La tabla 'hole' no existe. Créala primero.")
 
+            # Verificar si la tabla ya existe
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'match_hole_score'
+                );
+            """)
+            if cur.fetchone()['exists']:
+                print("✓ Tabla 'match_hole_score' ya existe, omitiendo creación")
+                return True
+
             print("Creando tabla 'match_hole_score'...")
             cur.execute("""
                 CREATE TABLE match_hole_score (
@@ -236,13 +272,13 @@ def create_match_hole_score_table(drop_if_exists=False):
                 );
             """)
 
-            # Crear índices
+            # Crear índices (si no existen)
             print("Creando índices en 'match_hole_score'...")
             cur.execute("""
-                CREATE INDEX idx_match_hole_score_match_player_id ON match_hole_score(match_player_id);
+                CREATE INDEX IF NOT EXISTS idx_match_hole_score_match_player_id ON match_hole_score(match_player_id);
             """)
             cur.execute("""
-                CREATE INDEX idx_match_hole_score_hole_id ON match_hole_score(hole_id);
+                CREATE INDEX IF NOT EXISTS idx_match_hole_score_hole_id ON match_hole_score(hole_id);
             """)
 
             print("✓ Tabla 'match_hole_score' creada exitosamente")
@@ -316,6 +352,18 @@ def create_match_stroke_table(drop_if_exists=False):
             if not cur.fetchone()['exists']:
                 raise Exception("La tabla 'golf_club' no existe. Créala primero.")
 
+            # Verificar si la tabla ya existe
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'match_stroke'
+                );
+            """)
+            if cur.fetchone()['exists']:
+                print("✓ Tabla 'match_stroke' ya existe, omitiendo creación")
+                return True
+
             print("Creando tabla 'match_stroke'...")
             cur.execute("""
                 CREATE TABLE match_stroke (
@@ -352,19 +400,19 @@ def create_match_stroke_table(drop_if_exists=False):
                 );
             """)
 
-            # Crear índices
+            # Crear índices (si no existen)
             print("Creando índices en 'match_stroke'...")
             cur.execute("""
-                CREATE INDEX idx_match_stroke_match_player_id ON match_stroke(match_player_id);
+                CREATE INDEX IF NOT EXISTS idx_match_stroke_match_player_id ON match_stroke(match_player_id);
             """)
             cur.execute("""
-                CREATE INDEX idx_match_stroke_hole_id ON match_stroke(hole_id);
+                CREATE INDEX IF NOT EXISTS idx_match_stroke_hole_id ON match_stroke(hole_id);
             """)
             cur.execute("""
-                CREATE INDEX idx_match_stroke_evaluated ON match_stroke(evaluated);
+                CREATE INDEX IF NOT EXISTS idx_match_stroke_evaluated ON match_stroke(evaluated);
             """)
             cur.execute("""
-                CREATE INDEX idx_match_stroke_match_player_hole ON match_stroke(match_player_id, hole_id, evaluated);
+                CREATE INDEX IF NOT EXISTS idx_match_stroke_match_player_hole ON match_stroke(match_player_id, hole_id, evaluated);
             """)
 
             print("✓ Tabla 'match_stroke' creada exitosamente")

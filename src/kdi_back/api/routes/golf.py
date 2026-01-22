@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 """Golf routes"""
 from flask import Blueprint, jsonify, request
-from kdi_back.infrastructure.agents.golf_agent import get_golf_recommendation
-from kdi_back.infrastructure.agents.next_shot_agent import get_next_shot_recommendation
+# Usando agentes LangChain (Claude 3 Haiku)
+from kdi_back.infrastructure.agents.golf_agent_langchain import get_golf_recommendation
+from kdi_back.infrastructure.agents.next_shot_agent_langchain import get_next_shot_recommendation
+# Agentes legacy de Strands (mantenidos pero no usados):
+# from kdi_back.infrastructure.agents.golf_agent import get_golf_recommendation as get_golf_recommendation_legacy
+# from kdi_back.infrastructure.agents.next_shot_agent import get_next_shot_recommendation as get_next_shot_recommendation_legacy
 from kdi_back.api.dependencies import get_golf_service, get_player_service
 
 golf_bp = Blueprint('golf', __name__)

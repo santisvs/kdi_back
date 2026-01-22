@@ -199,4 +199,140 @@ class PlayerRepository(ABC):
             quality_score: Calidad del golpe (0-100)
         """
         pass
+    
+    @abstractmethod
+    def update_user_data(self, user_id: int, email: Optional[str] = None,
+                        username: Optional[str] = None, first_name: Optional[str] = None,
+                        last_name: Optional[str] = None, phone: Optional[str] = None,
+                        date_of_birth: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Actualiza los datos de un usuario.
+        
+        Args:
+            user_id: ID del usuario a actualizar
+            email: Nuevo email (opcional)
+            username: Nuevo username (opcional)
+            first_name: Nuevo nombre (opcional)
+            last_name: Nuevo apellido (opcional)
+            phone: Nuevo teléfono (opcional)
+            date_of_birth: Nueva fecha de nacimiento (opcional, formato YYYY-MM-DD)
+            
+        Returns:
+            Diccionario con la información del usuario actualizado
+            
+        Raises:
+            ValueError: Si el usuario no existe o los datos no son válidos
+        """
+        pass
+    
+    @abstractmethod
+    def update_player_profile(self, user_id: int, handicap: Optional[float] = None,
+                            gender: Optional[str] = None,
+                            preferred_hand: Optional[str] = None,
+                            years_playing: Optional[int] = None,
+                            skill_level: Optional[str] = None,
+                            notes: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Actualiza el perfil de jugador de un usuario.
+        
+        Args:
+            user_id: ID del usuario
+            handicap: Nuevo handicap (opcional)
+            gender: Nuevo género (opcional)
+            preferred_hand: Nueva mano preferida (opcional)
+            years_playing: Nuevos años jugando (opcional)
+            skill_level: Nuevo nivel de habilidad (opcional)
+            notes: Nuevas notas (opcional)
+            
+        Returns:
+            Diccionario con la información del perfil actualizado
+            
+        Raises:
+            ValueError: Si el usuario no existe o no tiene perfil
+        """
+        pass
+    
+    @abstractmethod
+    def create_player_club(self, player_profile_id: int, club_name: str,
+                          club_type: Optional[str] = None,
+                          average_distance_meters: Optional[float] = None,
+                          min_distance_meters: Optional[float] = None,
+                          max_distance_meters: Optional[float] = None,
+                          average_error_meters: Optional[float] = None) -> Dict[str, Any]:
+        """
+        Crea un nuevo palo personalizado para un jugador.
+        
+        Args:
+            player_profile_id: ID del perfil de jugador
+            club_name: Nombre del palo
+            club_type: Tipo del palo (opcional)
+            average_distance_meters: Distancia promedio en metros (opcional)
+            min_distance_meters: Distancia mínima en metros (opcional)
+            max_distance_meters: Distancia máxima en metros (opcional)
+            average_error_meters: Error promedio en metros (opcional)
+            
+        Returns:
+            Diccionario con la información del palo creado
+            
+        Raises:
+            ValueError: Si el perfil no existe o los datos no son válidos
+        """
+        pass
+    
+    @abstractmethod
+    def update_player_club(self, club_statistics_id: int, player_profile_id: int,
+                          club_name: Optional[str] = None,
+                          club_type: Optional[str] = None,
+                          average_distance_meters: Optional[float] = None,
+                          min_distance_meters: Optional[float] = None,
+                          max_distance_meters: Optional[float] = None,
+                          average_error_meters: Optional[float] = None) -> Dict[str, Any]:
+        """
+        Actualiza un palo de un jugador.
+        
+        Args:
+            club_statistics_id: ID de la estadística del palo
+            player_profile_id: ID del perfil de jugador (para verificación)
+            club_name: Nuevo nombre del palo (opcional)
+            club_type: Nuevo tipo del palo (opcional)
+            average_distance_meters: Nueva distancia promedio (opcional)
+            min_distance_meters: Nueva distancia mínima (opcional)
+            max_distance_meters: Nueva distancia máxima (opcional)
+            average_error_meters: Nuevo error promedio (opcional)
+            
+        Returns:
+            Diccionario con la información del palo actualizado
+            
+        Raises:
+            ValueError: Si el palo no existe o no pertenece al jugador
+        """
+        pass
+    
+    @abstractmethod
+    def delete_player_club(self, club_statistics_id: int, player_profile_id: int) -> None:
+        """
+        Elimina un palo de un jugador.
+        
+        Args:
+            club_statistics_id: ID de la estadística del palo
+            player_profile_id: ID del perfil de jugador (para verificación)
+            
+        Raises:
+            ValueError: Si el palo no existe o no pertenece al jugador
+        """
+        pass
+    
+    @abstractmethod
+    def get_player_club_by_id(self, club_statistics_id: int, player_profile_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Obtiene un palo específico de un jugador por su ID.
+        
+        Args:
+            club_statistics_id: ID de la estadística del palo
+            player_profile_id: ID del perfil de jugador
+            
+        Returns:
+            Diccionario con la información del palo si existe, None si no
+        """
+        pass
 

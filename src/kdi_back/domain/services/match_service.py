@@ -351,21 +351,59 @@ class MatchService:
         
         return self.match_repository.get_matches_by_course(course_id, status)
     
-    def get_matches_by_player(self, user_id: int, status: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_matches_by_player(self, user_id: int, status: Optional[str] = None,
+                              course_id: Optional[int] = None,
+                              start_date: Optional[str] = None,
+                              end_date: Optional[str] = None,
+                              limit: Optional[int] = None,
+                              offset: Optional[int] = None) -> Dict[str, Any]:
         """
-        Obtiene todos los partidos de un jugador.
+        Obtiene los partidos de un jugador con filtros y paginación.
         
         Args:
             user_id: ID del usuario/jugador
-            status: Filtro opcional por estado
+            status: Filtro opcional por estado (in_progress, completed, cancelled)
+            course_id: Filtro opcional por campo de golf
+            start_date: Filtro opcional por fecha de inicio (formato YYYY-MM-DD)
+            end_date: Filtro opcional por fecha de fin (formato YYYY-MM-DD)
+            limit: Límite de resultados por página (opcional)
+            offset: Desplazamiento para paginación (opcional)
             
         Returns:
-            Lista de partidos
+            Diccionario con 'matches' (lista de partidos) y 'total' (total de partidos)
         """
         if status and status not in ['in_progress', 'completed', 'cancelled']:
             raise ValueError("El status debe ser: in_progress, completed o cancelled")
         
-        return self.match_repository.get_matches_by_player(user_id, status)
+        # Validaciones
+        if limit is not None and limit < 0:
+            raise ValueError("El límite debe ser un número positivo")
+        if offset is not None and offset < 0:
+            raise ValueError("El offset debe ser un número positivo")
+        
+        if start_date:
+            try:
+                from datetime import datetime
+                datetime.strptime(start_date, '%Y-%m-%d')
+            except ValueError:
+                raise ValueError("La fecha de inicio debe estar en formato YYYY-MM-DD")
+        
+        if end_date:
+            try:
+                from datetime import datetime
+                datetime.strptime(end_date, '%Y-%m-%d')
+            except ValueError:
+                raise ValueError("La fecha de fin debe estar en formato YYYY-MM-DD")
+        
+        return self.match_repository.get_matches_by_player(
+            user_id=user_id,
+            status=status,
+            course_id=course_id,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+            offset=offset
+        )
     
     def complete_hole(self, match_id: int, user_id: int, course_id: int, hole_number: int) -> Dict[str, Any]:
         """
